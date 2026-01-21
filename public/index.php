@@ -4,64 +4,49 @@ require __DIR__ . '/../vendor/autoload.php';
 
 use Agroprodutor\Controllers\DanfeController;
 use Agroprodutor\Controllers\AgroProdutorController;
+use FastRoute\RouteCollector;
 
-$uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
-$parts = explode('/', $uri);
+$dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
+    // Rotas DANFE - /public/danfe/...
+    $r->addRoute('POST', '/public/danfe/{apelido}/{moduleName}/gerar', [DanfeController::class, 'gerarPdfs']);
+    $r->addRoute('GET', '/public/danfe/{apelido}/{moduleName}/pdf/{clienteId}', [DanfeController::class, 'downloadPdf']);
 
-var_dump($parts);
-exit;
+    // Rotas Agroprodutor - /public/agroprodutor/...
+    $r->addRoute('POST', '/public/agroprodutor/{apelido}/{moduleName}/setjson[/{campoChave}]', [AgroProdutorController::class, 'setJson']);
+    $r->addRoute('GET', '/public/agroprodutor/{apelido}/{moduleName}/getjson[/{jsonName}]', [AgroProdutorController::class, 'getJson']);
+    $r->addRoute('POST', '/public/agroprodutor/{apelido}/{moduleName}/register', [AgroProdutorController::class, 'register']);
+    $r->addRoute('POST', '/public/agroprodutor/{apelido}/{moduleName}/validate', [AgroProdutorController::class, 'validateCredentials']);
+});
 
-$method = $_SERVER['REQUEST_METHOD'];
+$httpMethod = $_SERVER['REQUEST_METHOD'];
+$uri = $_SERVER['REQUEST_URI'];
 
-// Rotas com prefixo: /agroprodutor/public/... ou /danfe/public/...
-// parts[0] = 'agroprodutor' ou 'danfe'
-// parts[1] = 'public'
-// parts[2+] = parâmetros da rota
-
-// Rota: POST /danfe/public/{apelido}/{moduleName}/gerar
-if ($parts[0] === 'danfe' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4]) && $parts[4] === 'gerar' && $method === 'POST') {
-    DanfeController::gerarPdfs($parts[2], $parts[3]);
-    exit;
+if (false !== $pos = strpos($uri, '?')) {
+    $uri = substr($uri, 0, $pos);
 }
+$uri = rawurldecode($uri);
 
-// Rota: GET /danfe/public/{apelido}/{moduleName}/pdf/{clienteId}
-if ($parts[0] === 'danfe' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4]) && $parts[4] === 'pdf' && isset($parts[5]) && $method === 'GET') {
-    DanfeController::downloadPdf($parts[2], $parts[3], $parts[5]);
-    exit;
+$routeInfo = $dispatcher->dispatch($httpMethod, $uri);
+
+switch ($routeInfo[0]) {
+    case FastRoute\Dispatcher::NOT_FOUND:
+        http_response_code(404);
+        echo json_encode(['error' => 'Rota não encontrada']);
+        break;
+
+    case FastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+        $allowedMethods = $routeInfo[1];
+        http_response_code(405);
+        echo json_encode(['error' => 'Método não permitido', 'allowed' => $allowedMethods]);
+        break;
+
+    case FastRoute\Dispatcher::FOUND:
+        $handler = $routeInfo[1];
+        $vars = $routeInfo[2];
+
+        [$controller, $method] = $handler;
+
+        // Chama o método do controller com os parâmetros da rota
+        call_user_func_array([$controller, $method], $vars);
+        break;
 }
-
-// Rotas /agroprodutor/public/{apelido}/{moduleName}/...
-if ($parts[0] === 'agroprodutor' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4])) {
-    $apelido = $parts[2];
-    $moduleName = $parts[3];
-    $action = $parts[4];
-
-    // POST /agroprodutor/public/{apelido}/{moduleName}/setjson/{campoChave?}
-    if ($action === 'setjson' && $method === 'POST') {
-        $campoChave = isset($parts[5]) ? $parts[5] : 'CLIFOR';
-        AgroProdutorController::setJson($apelido, $moduleName, $campoChave);
-        exit;
-    }
-
-    // GET /agroprodutor/public/{apelido}/{moduleName}/getjson/{jsonName?}
-    if ($action === 'getjson' && $method === 'GET') {
-        $jsonName = isset($parts[5]) ? $parts[5] : '';
-        AgroProdutorController::getJson($apelido, $moduleName, $jsonName);
-        exit;
-    }
-
-    // POST /agroprodutor/public/{apelido}/{moduleName}/register
-    if ($action === 'register' && $method === 'POST') {
-        AgroProdutorController::register($apelido, $moduleName);
-        exit;
-    }
-
-    // POST /agroprodutor/public/{apelido}/{moduleName}/validate
-    if ($action === 'validate' && $method === 'POST') {
-        AgroProdutorController::validateCredentials($apelido, $moduleName);
-        exit;
-    }
-}
-
-http_response_code(404);
-echo 'Rota não encontrada';

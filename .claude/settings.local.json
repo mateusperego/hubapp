@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(dir \"\\\\mateus\\\\C\\\\wamp\\\\www\\\\agroprodutor\")",
-      "Bash(dir \"\\\\mateus\\\\C\\\\wamp\\\\www\\\\agroprodutor\\\\storage\")"
+      "Bash(dir \"\\\\mateus\\\\C\\\\wamp\\\\www\\\\agroprodutor\\\\storage\")",
+      "Bash(composer require:*)",
+      "Bash(/c/ProgramData/ComposerSetup/bin/composer.bat require nikic/fast-route)",
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lucas\\\\Desktop\\\\agroprodutor && composer require nikic/fast-route\")"
     ]
   }
 }
