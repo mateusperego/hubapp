@@ -6,49 +6,61 @@ namespace Composer\Autoload;
 
 class ComposerStaticInit147cd73e452aea0ae0d5ae6c8a9121d8
 {
+    public static $files = array (
+        '253c157292f75eb38082b5acb06f3f01' => __DIR__ . '/..' . '/nikic/fast-route/src/functions.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
-        'P' => 
+        'P' =>
         array (
             'Psr\\Log\\' => 8,
         ),
-        'N' => 
+        'N' =>
         array (
             'NFePHP\\DA\\' => 10,
             'NFePHP\\Common\\' => 14,
         ),
-        'C' => 
+        'F' =>
+        array (
+            'FastRoute\\' => 10,
+        ),
+        'C' =>
         array (
             'Com\\Tecnick\\Color\\' => 18,
             'Com\\Tecnick\\Barcode\\' => 20,
         ),
-        'A' => 
+        'A' =>
         array (
             'Agroprodutor\\' => 13,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Psr\\Log\\' => 
+        'Psr\\Log\\' =>
         array (
             0 => __DIR__ . '/..' . '/psr/log/src',
         ),
-        'NFePHP\\DA\\' => 
+        'NFePHP\\DA\\' =>
         array (
             0 => __DIR__ . '/..' . '/nfephp-org/sped-da/src',
         ),
-        'NFePHP\\Common\\' => 
+        'NFePHP\\Common\\' =>
         array (
             0 => __DIR__ . '/..' . '/nfephp-org/sped-common/src',
         ),
-        'Com\\Tecnick\\Color\\' => 
+        'FastRoute\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/nikic/fast-route/src',
+        ),
+        'Com\\Tecnick\\Color\\' =>
         array (
             0 => __DIR__ . '/..' . '/tecnickcom/tc-lib-color/src',
         ),
-        'Com\\Tecnick\\Barcode\\' => 
+        'Com\\Tecnick\\Barcode\\' =>
         array (
             0 => __DIR__ . '/..' . '/tecnickcom/tc-lib-barcode/src',
         ),
-        'Agroprodutor\\' => 
+        'Agroprodutor\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
