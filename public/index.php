@@ -7,6 +7,10 @@ use Agroprodutor\Controllers\AgroProdutorController;
 
 $uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
 $parts = explode('/', $uri);
+
+var_dump($parts);
+exit;
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 // Rotas com prefixo: /agroprodutor/public/... ou /danfe/public/...
