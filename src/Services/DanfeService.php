@@ -19,7 +19,7 @@ class DanfeService
         }
     }
 
-    public static function configurarDanfe(Danfe $danfe): void
+    public static function configurarDanfe(Danfe $danfe, string $cnpj): void
     {
         $danfe->descProdInfoComplemento = false;
         $danfe->setOcultarUnidadeTributavel(true);
@@ -29,6 +29,10 @@ class DanfeService
         $danfe->setDefaultDecimalPlaces(4);
         $danfe->debugMode(false);
         $danfe->creditsIntegratorFooter('EL Sistemas - https://www.elsistemas.com.br/');
+
+        $logo = 'www/webroot/ROOT/storage/logos/'.$cnpj.'/logo.png';
+
+        $danfe->logoParameters($logo, $logoAlign = 'L', $mode_bw = false);
     }
 
     public static function gerarPdfs(string $apelido, string $moduleName, array $registros): array
