@@ -9,49 +9,50 @@ $uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
 $parts = explode('/', $uri);
 $method = $_SERVER['REQUEST_METHOD'];
 
-// Rotas com prefixo: /agroprodutor/... ou /danfe/...
+// Rotas com prefixo: /agroprodutor/public/... ou /danfe/public/...
 // parts[0] = 'agroprodutor' ou 'danfe'
-// parts[1+] = parâmetros da rota
+// parts[1] = 'public'
+// parts[2+] = parâmetros da rota
 
-// Rota: POST /danfe/{apelido}/{moduleName}/gerar
-if ($parts[0] === 'danfe' && isset($parts[1]) && isset($parts[2]) && isset($parts[3]) && $parts[3] === 'gerar' && $method === 'POST') {
-    DanfeController::gerarPdfs($parts[1], $parts[2]);
+// Rota: POST /danfe/public/{apelido}/{moduleName}/gerar
+if ($parts[0] === 'danfe' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4]) && $parts[4] === 'gerar' && $method === 'POST') {
+    DanfeController::gerarPdfs($parts[2], $parts[3]);
     exit;
 }
 
-// Rota: GET /danfe/{apelido}/{moduleName}/pdf/{clienteId}
-if ($parts[0] === 'danfe' && isset($parts[1]) && isset($parts[2]) && isset($parts[3]) && $parts[3] === 'pdf' && isset($parts[4]) && $method === 'GET') {
-    DanfeController::downloadPdf($parts[1], $parts[2], $parts[4]);
+// Rota: GET /danfe/public/{apelido}/{moduleName}/pdf/{clienteId}
+if ($parts[0] === 'danfe' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4]) && $parts[4] === 'pdf' && isset($parts[5]) && $method === 'GET') {
+    DanfeController::downloadPdf($parts[2], $parts[3], $parts[5]);
     exit;
 }
 
-// Rotas /agroprodutor/{apelido}/{moduleName}/...
-if ($parts[0] === 'agroprodutor' && isset($parts[1]) && isset($parts[2]) && isset($parts[3])) {
-    $apelido = $parts[1];
-    $moduleName = $parts[2];
-    $action = $parts[3];
+// Rotas /agroprodutor/public/{apelido}/{moduleName}/...
+if ($parts[0] === 'agroprodutor' && isset($parts[1]) && $parts[1] === 'public' && isset($parts[2]) && isset($parts[3]) && isset($parts[4])) {
+    $apelido = $parts[2];
+    $moduleName = $parts[3];
+    $action = $parts[4];
 
-    // POST /agroprodutor/{apelido}/{moduleName}/setjson/{campoChave?}
+    // POST /agroprodutor/public/{apelido}/{moduleName}/setjson/{campoChave?}
     if ($action === 'setjson' && $method === 'POST') {
-        $campoChave = isset($parts[4]) ? $parts[4] : 'CLIFOR';
+        $campoChave = isset($parts[5]) ? $parts[5] : 'CLIFOR';
         AgroProdutorController::setJson($apelido, $moduleName, $campoChave);
         exit;
     }
 
-    // GET /agroprodutor/{apelido}/{moduleName}/getjson/{jsonName?}
+    // GET /agroprodutor/public/{apelido}/{moduleName}/getjson/{jsonName?}
     if ($action === 'getjson' && $method === 'GET') {
-        $jsonName = isset($parts[4]) ? $parts[4] : '';
+        $jsonName = isset($parts[5]) ? $parts[5] : '';
         AgroProdutorController::getJson($apelido, $moduleName, $jsonName);
         exit;
     }
 
-    // POST /agroprodutor/{apelido}/{moduleName}/register
+    // POST /agroprodutor/public/{apelido}/{moduleName}/register
     if ($action === 'register' && $method === 'POST') {
         AgroProdutorController::register($apelido, $moduleName);
         exit;
     }
 
-    // POST /agroprodutor/{apelido}/{moduleName}/validate
+    // POST /agroprodutor/public/{apelido}/{moduleName}/validate
     if ($action === 'validate' && $method === 'POST') {
         AgroProdutorController::validateCredentials($apelido, $moduleName);
         exit;
