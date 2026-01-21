@@ -32,7 +32,7 @@ class DanfeService
 
         $logo = '/var/www/webroot/ROOT/storage/logos/'.$cnpj.'/logo.png';
 
-        $danfe->logoParameters($logo, $logoAlign = 'L', $mode_bw = false);
+        $danfe->logoParameters($logo, 'L', false);
     }
 
     public static function gerarPdfs(string $apelido, string $moduleName, array $registros): array
@@ -57,7 +57,7 @@ class DanfeService
 
             try {
                 $danfe = new Danfe($xml);
-                self::configurarDanfe($danfe);
+                self::configurarDanfe($danfe, $apelido);
 
                 $pdf = $danfe->render();
 
