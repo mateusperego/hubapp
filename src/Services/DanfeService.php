@@ -30,7 +30,7 @@ class DanfeService
         $danfe->debugMode(false);
         $danfe->creditsIntegratorFooter('EL Sistemas - https://www.elsistemas.com.br/');
 
-        $logo = 'www/webroot/ROOT/storage/logos/'.$cnpj.'/logo.png';
+        $logo = '/var/www/webroot/ROOT/storage/logos/'.$cnpj.'/logo.png';
 
         $danfe->logoParameters($logo, $logoAlign = 'L', $mode_bw = false);
     }
