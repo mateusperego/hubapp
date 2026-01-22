@@ -18,10 +18,10 @@ class GoogleOAuth
 
     public function getAccessToken(): string
     {
-        if ($this->tokenIsValid()) {
-            $data = json_decode(file_get_contents($this->cacheFile), true);
-            return $data['access_token'];
-        }
+        // if ($this->tokenIsValid()) {
+        //     $data = json_decode(file_get_contents($this->cacheFile), true);
+        //     return $data['access_token'];
+        // }
 
         return $this->requestNewToken();
     }
