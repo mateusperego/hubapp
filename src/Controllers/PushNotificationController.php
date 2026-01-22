@@ -33,20 +33,17 @@ class PushNotificationController
 
             $fcm = new FcmClient($config['project_id']);
 
-            $data = [];
-
-            if (!empty($body['data']) && is_array($body['data'])) {
-                $data = self::normalizeData($body['data']);
-            }
-
             $message = [
                 'token' => $body['token'],
                 'notification' => [
                     'title' => $body['title'],
                     'body'  => $body['body'] ?? '',
                 ],
-                'data' => $data,
             ];
+
+            if (!empty($body['data']) && is_array($body['data'])) {
+                $message['data'] = self::normalizeData($body['data']);
+            }
 
             $result = $fcm->send($accessToken, $message);
 
@@ -92,12 +89,6 @@ class PushNotificationController
 
             $responses = [];
 
-            $data = [];
-
-            if (!empty($body['data']) && is_array($body['data'])) {
-                $data = self::normalizeData($body['data']);
-            }
-
             foreach ($body['tokens'] as $token) {
                 $message = [
                     'token' => $token,
@@ -105,8 +96,11 @@ class PushNotificationController
                         'title' => $body['title'],
                         'body'  => $body['body'] ?? '',
                     ],
-                    'data' => $data,
                 ];
+
+                if (!empty($body['data']) && is_array($body['data'])) {
+                    $message['data'] = self::normalizeData($body['data']);
+                }
 
                 $responses[] = $fcm->send($accessToken, $message);
             }
@@ -152,20 +146,17 @@ class PushNotificationController
 
             $fcm = new FcmClient($config['project_id']);
 
-            $data = [];
-
-            if (!empty($body['data']) && is_array($body['data'])) {
-                $data = self::normalizeData($body['data']);
-            }
-
             $message = [
                 'topic' => $body['topic'],
                 'notification' => [
                     'title' => $body['title'],
                     'body'  => $body['body'] ?? '',
                 ],
-                'data' => $data,
             ];
+
+            if (!empty($body['data']) && is_array($body['data'])) {
+                $message['data'] = self::normalizeData($body['data']);
+            }
 
             $result = $fcm->send($accessToken, $message);
 
