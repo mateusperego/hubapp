@@ -15,7 +15,7 @@ class PushNotificationController
     /**
      * Envio para UM token
      */
-    public static function send(string $app): void
+    public static function send(string $cnpj, string $app): void
     {
         try {
             $body = self::getBody();
@@ -26,7 +26,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = self::getFirebaseConfig($app);
+            $config = self::getFirebaseConfig($cnpj, $app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -63,7 +63,7 @@ class PushNotificationController
     /**
      * Envio para VÁRIOS tokens
      */
-    public static function sendMulti(string $app): void
+    public static function sendMulti(string $cnpj, string $app): void
     {
         try {
             $body = self::getBody();
@@ -80,7 +80,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = self::getFirebaseConfig($app);
+            $config = self::getFirebaseConfig($cnpj, $app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -122,7 +122,7 @@ class PushNotificationController
     /**
      * Envio para TODOS via TOPIC (broadcast)
      */
-    public static function sendToTopic(string $app): void
+    public static function sendToTopic(string $cnpj, string $app): void
     {
         try {
             $body = self::getBody();
@@ -139,7 +139,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = self::getFirebaseConfig($app);
+            $config = self::getFirebaseConfig($cnpj, $app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -190,9 +190,9 @@ class PushNotificationController
         return $normalized;
     }
 
-    private static function getFirebaseConfig(string $app): array
+    private static function getFirebaseConfig(string $cnpj, string $app): array
     {
-        $path = __DIR__ . "/../../config/firebase/{$app}.php";
+        $path = __DIR__ . "/../../config/firebase/$cnpj/{$app}/firebase.php";
 
         if (!file_exists($path)) {
             throw new \RuntimeException("Firebase app '{$app}' não configurado");
