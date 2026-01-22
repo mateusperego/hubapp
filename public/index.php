@@ -59,19 +59,19 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
      * ======================= */
     $r->addRoute(
         'POST',
-        '/public/push/send',
+        '/public/push/{app}/send',
         [PushNotificationController::class, 'send']
     );
 
     $r->addRoute(
         'POST',
-        '/public/push/send-multi',
+        '/public/push/{app}/send-multi',
         [PushNotificationController::class, 'sendMulti']
     );
 
     $r->addRoute(
         'POST',
-        '/public/push/topic',
+        '/public/push/{app}/topic',
         [PushNotificationController::class, 'sendToTopic']
     );
 });

@@ -15,7 +15,7 @@ class PushNotificationController
     /**
      * Envio para UM token
      */
-    public static function send(): void
+    public static function send(string $app): void
     {
         try {
             $body = self::getBody();
@@ -26,7 +26,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = require __DIR__ . '/../../config/firebase.php';
+            $config = self::getFirebaseConfig($app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -63,7 +63,7 @@ class PushNotificationController
     /**
      * Envio para VÁRIOS tokens
      */
-    public static function sendMulti(): void
+    public static function sendMulti(string $app): void
     {
         try {
             $body = self::getBody();
@@ -80,7 +80,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = require __DIR__ . '/../../config/firebase.php';
+            $config = self::getFirebaseConfig($app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -122,7 +122,7 @@ class PushNotificationController
     /**
      * Envio para TODOS via TOPIC (broadcast)
      */
-    public static function sendToTopic(): void
+    public static function sendToTopic(string $app): void
     {
         try {
             $body = self::getBody();
@@ -139,7 +139,7 @@ class PushNotificationController
                 return;
             }
 
-            $config = require __DIR__ . '/../../config/firebase.php';
+            $config = self::getFirebaseConfig($app);
 
             $oauth = new GoogleOAuth($config);
             $accessToken = $oauth->getAccessToken();
@@ -189,4 +189,22 @@ class PushNotificationController
 
         return $normalized;
     }
+
+    private static function getFirebaseConfig(string $app): array
+    {
+        $path = __DIR__ . "/../../config/firebase/{$app}.php";
+
+        if (!file_exists($path)) {
+            throw new \RuntimeException("Firebase app '{$app}' não configurado");
+        }
+
+        $config = require $path;
+
+        if (!is_array($config)) {
+            throw new \RuntimeException("Config inválida para '{$app}'");
+        }
+
+        return $config;
+    }
+
 }

@@ -6,7 +6,7 @@ return [
     'private_key' => str_replace(
         "\\n",
         "\n",
-        $_ENV['FIREBASE_PRIVATE_KEY'] ?? ''
+        $_ENV['COOPROLAT_FIREBASE_PRIVATE_KEY'] ?? ''
     ),
     'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
     'token_uri' => 'https://oauth2.googleapis.com/token',
