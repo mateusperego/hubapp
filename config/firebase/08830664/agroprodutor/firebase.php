@@ -1,8 +1,8 @@
 <?php
 
 return [
-    'project_id' => 'cooprolat---agro-produto-d4419',
-    'client_email' => 'firebase-adminsdk-fbsvc@cooprolat---agro-produto-d4419.iam.gserviceaccount.com',
+    'project_id' => 'cooprolat---agro-produtor-40d9',
+    'client_email' => 'firebase-adminsdk-fbsvc@cooprolat---agro-produtor-40d9.iam.gserviceaccount.com',
     'private_key' => str_replace(
         "\\n",
         "\n",
