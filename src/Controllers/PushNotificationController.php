@@ -33,13 +33,19 @@ class PushNotificationController
 
             $fcm = new FcmClient($config['project_id']);
 
+            $data = [];
+
+            if (!empty($body['data']) && is_array($body['data'])) {
+                $data = self::normalizeData($body['data']);
+            }
+
             $message = [
                 'token' => $body['token'],
                 'notification' => [
                     'title' => $body['title'],
                     'body'  => $body['body'] ?? '',
                 ],
-                'data' => $body['data'] ?? [],
+                'data' => $data,
             ];
 
             $result = $fcm->send($accessToken, $message);
@@ -86,6 +92,12 @@ class PushNotificationController
 
             $responses = [];
 
+            $data = [];
+
+            if (!empty($body['data']) && is_array($body['data'])) {
+                $data = self::normalizeData($body['data']);
+            }
+
             foreach ($body['tokens'] as $token) {
                 $message = [
                     'token' => $token,
@@ -93,7 +105,7 @@ class PushNotificationController
                         'title' => $body['title'],
                         'body'  => $body['body'] ?? '',
                     ],
-                    'data' => $body['data'] ?? [],
+                    'data' => $data,
                 ];
 
                 $responses[] = $fcm->send($accessToken, $message);
@@ -140,13 +152,19 @@ class PushNotificationController
 
             $fcm = new FcmClient($config['project_id']);
 
+            $data = [];
+
+            if (!empty($body['data']) && is_array($body['data'])) {
+                $data = self::normalizeData($body['data']);
+            }
+
             $message = [
                 'topic' => $body['topic'],
                 'notification' => [
                     'title' => $body['title'],
                     'body'  => $body['body'] ?? '',
                 ],
-                'data' => $body['data'] ?? [],
+                'data' => $data,
             ];
 
             $result = $fcm->send($accessToken, $message);
@@ -162,5 +180,22 @@ class PushNotificationController
                 'error'   => $e->getMessage()
             ]);
         }
+    }
+
+
+    private static function normalizeData(array $data): array
+    {
+        $normalized = [];
+
+        foreach ($data as $key => $value) {
+            if (is_scalar($value)) {
+                $normalized[$key] = (string) $value;
+            } else {
+                // objetos / arrays viram JSON string
+                $normalized[$key] = json_encode($value);
+            }
+        }
+
+        return $normalized;
     }
 }
