@@ -3,6 +3,7 @@
 namespace Agroprodutor\Firebase;
 
 use GuzzleHttp\Client;
+use NFePHP\Common\Exception\ExceptionCollection;
 
 class FcmClient
 {
@@ -15,9 +16,10 @@ class FcmClient
 
     public function send(string $accessToken, array $message): array
     {
-        $client = new Client();
+        try {
+            $client = new Client();
 
-        $response = $client->post(
+            $response = $client->post(
             "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send",
             [
                 'headers' => [
@@ -28,6 +30,12 @@ class FcmClient
             ]
         );
 
-        return json_decode($response->getBody(), true);
+        $retorno = $response->getBody();
+        
+        } catch (\Exception $e) {
+           $retorno = $e->getMessage(); 
+        }
+
+        return json_decode($retorno, true);
     }
 }
