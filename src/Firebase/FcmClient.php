@@ -3,7 +3,7 @@
 namespace Agroprodutor\Firebase;
 
 use GuzzleHttp\Client;
-use NFePHP\Common\Exception\ExceptionCollection;
+use GuzzleHttp\Exception\RequestException;
 
 class FcmClient
 {
@@ -20,22 +20,37 @@ class FcmClient
             $client = new Client();
 
             $response = $client->post(
-            "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send",
-            [
-                'headers' => [
-                    'Authorization' => "Bearer {$accessToken}",
-                    'Content-Type'  => 'application/json; charset=UTF-8',
-                ],
-                'json' => ['message' => $message],
-            ]
-        );
+                "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send",
+                [
+                    'headers' => [
+                        'Authorization' => "Bearer {$accessToken}",
+                        'Content-Type'  => 'application/json; charset=UTF-8',
+                    ],
+                    'json' => ['message' => $message],
+                ]
+            );
 
-        $retorno = $response->getBody();
-        
-        } catch (\Exception $e) {
-           $retorno = $e->getMessage(); 
+            return json_decode(
+                (string) $response->getBody(),
+                true
+            );
+
+        } catch (RequestException $e) {
+
+            return [
+                'success' => false,
+                'error'   => $e->getMessage(),
+                'firebase_response' => $e->hasResponse()
+                    ? json_decode((string) $e->getResponse()->getBody(), true)
+                    : null
+            ];
+
+        } catch (\Throwable $e) {
+
+            return [
+                'success' => false,
+                'error'   => $e->getMessage()
+            ];
         }
-
-        return json_decode($retorno, true);
     }
 }
