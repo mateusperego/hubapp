@@ -41,45 +41,55 @@ class DanfeService
 
     public static function gerarPdfs(string $apelido, string $moduleName, array $registros): array
     {
-        $basePath = self::getBasePath($apelido, $moduleName);
-        self::ensureDirectoryExists($basePath);
+        try {
+            $basePath = self::getBasePath($apelido, $moduleName);
+            self::ensureDirectoryExists($basePath);
 
-        if (empty($registros)) {
-            return ['SUCCESS' => false, 'erro' => 'Nenhum registro enviado'];
-        }
-
-        $arquivosGerados = 0;
-        $erros = [];
-
-        foreach ($registros as $registro) {
-            if (!isset($registro['CLIFOR']) || !isset($registro['XML_RETORNO'])) {
-                continue;
+            if (empty($registros)) {
+                return ['SUCCESS' => false, 'erro' => 'Nenhum registro enviado'];
             }
 
-            $clifor = $registro['CLIFOR'];
-            $xml = $registro['XML_RETORNO'];
+            $arquivosGerados = 0;
+            $erros = [];
 
-            try {
-                $danfe = new Danfe($xml);
-                self::configurarDanfe($danfe, $apelido);
-
-                $pdf = $danfe->render();
-
-                $filePath = $basePath . $clifor . '.pdf';
-
-                if (file_put_contents($filePath, $pdf) !== false) {
-                    $arquivosGerados++;
+            foreach ($registros as $registro) {
+                if (!isset($registro['CLIFOR']) || !isset($registro['XML_RETORNO'])) {
+                    continue;
                 }
-            } catch (Exception $e) {
-                $erros[] = "CLIFOR $clifor: " . $e->getMessage();
+
+                $clifor = $registro['CLIFOR'];
+                $xml = $registro['XML_RETORNO'];
+
+                try {
+                    $danfe = new Danfe($xml);
+                    self::configurarDanfe($danfe, $apelido);
+
+                    $pdf = $danfe->render();
+
+                    $filePath = $basePath . $clifor . '.pdf';
+
+                    if (file_put_contents($filePath, $pdf) !== false) {
+                        $arquivosGerados++;
+                    }
+                } catch (Exception $e) {
+                    $erros[] = "CLIFOR $clifor: " . $e->getMessage();
+                }
             }
-        }
 
-        $response = ['SUCCESS' => true, 'arquivos_gerados' => $arquivosGerados];
-        if (!empty($erros)) {
-            $response['erros'] = $erros;
-        }
+            $response = ['SUCCESS' => true, 'arquivos_gerados' => $arquivosGerados];
+            if (!empty($erros)) {
+                $response['erros'] = $erros;
+            }
 
-        return $response;
+            return $response;
+
+        } catch (Exception $e) {
+            return [
+                'SUCCESS' => false,
+                'erro' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ];
+        }
     }
 }
