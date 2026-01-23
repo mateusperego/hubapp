@@ -5,7 +5,11 @@
       "Bash(dir \"\\\\mateus\\\\C\\\\wamp\\\\www\\\\agroprodutor\\\\storage\")",
       "Bash(composer require:*)",
       "Bash(/c/ProgramData/ComposerSetup/bin/composer.bat require nikic/fast-route)",
-      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lucas\\\\Desktop\\\\agroprodutor && composer require nikic/fast-route\")"
+      "Bash(cmd.exe /c \"cd C:\\\\Users\\\\Lucas\\\\Desktop\\\\agroprodutor && composer require nikic/fast-route\")",
+      "WebFetch(domain:api.letssign.com.br)",
+      "Bash(dir C:UsersLucasDesktopagroprodutor /B)",
+      "WebFetch(domain:letssign.notion.site)",
+      "WebSearch"
     ]
   }
 }

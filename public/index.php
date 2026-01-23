@@ -8,6 +8,7 @@ $dotenv->load();
 use Agroprodutor\Controllers\DanfeController;
 use Agroprodutor\Controllers\AgroProdutorController;
 use Agroprodutor\Controllers\PushNotificationController;
+use Agroprodutor\Controllers\LetsSignController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -73,6 +74,27 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         'POST',
         '/public/push/{cnpj}/{app}/topic',
         [PushNotificationController::class, 'sendToTopic']
+    );
+
+    /* =======================
+     * LETSSIGN
+     * ======================= */
+    $r->addRoute(
+        'POST',
+        '/public/letssign/sign',
+        [LetsSignController::class, 'signDocument']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/letssign/download/{documentId}',
+        [LetsSignController::class, 'downloadSignedDocument']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/letssign/status/{documentId}',
+        [LetsSignController::class, 'getDocumentStatus']
     );
 });
 

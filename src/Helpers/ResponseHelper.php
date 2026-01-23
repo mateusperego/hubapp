@@ -40,4 +40,11 @@ class ResponseHelper
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(['error' => $message]);
     }
+
+    public static function error(string $message, int $statusCode = 500): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'error' => $message]);
+    }
 }
