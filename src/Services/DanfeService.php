@@ -30,7 +30,7 @@ class DanfeService
         $danfe->debugMode(false);
         $danfe->creditsIntegratorFooter('EL Sistemas - https://www.elsistemas.com.br/');
 
-        $logo = '/var/www/webroot/ROOT/storage/logos/'.$cnpj.'/logo.jpg';
+        $logo = __DIR__ . '/../../storage/logos/' . $cnpj . '/logo.jpg';
 
         if (!file_exists($logo)) {
             throw new Exception("Logo não encontrada: $logo");
