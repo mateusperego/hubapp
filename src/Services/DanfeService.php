@@ -72,6 +72,11 @@ class DanfeService
                         $arquivosGerados++;
                     }
                 } catch (Exception $e) {
+                    self::logError('gerarPdfs', $e->getMessage(), [
+                        'apelido' => $apelido,
+                        'moduleName' => $moduleName,
+                        'clifor' => $clifor,
+                    ]);
                     $erros[] = "CLIFOR $clifor: " . $e->getMessage();
                 }
             }
@@ -84,6 +89,13 @@ class DanfeService
             return $response;
 
         } catch (Exception $e) {
+            self::logError('gerarPdfs', $e->getMessage(), [
+                'apelido' => $apelido,
+                'moduleName' => $moduleName,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
             return [
                 'SUCCESS' => false,
                 'erro' => $e->getMessage(),
@@ -91,5 +103,24 @@ class DanfeService
                 'line' => $e->getLine()
             ];
         }
+    }
+
+    /**
+     * Registra erros no log
+     */
+    private static function logError(string $method, string $message, array $context = []): void
+    {
+        $logDir = __DIR__ . '/../../storage/logs';
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0777, true);
+        }
+
+        $logFile = $logDir . '/danfe_' . date('Y-m-d') . '.log';
+        $timestamp = date('Y-m-d H:i:s');
+        $contextStr = json_encode($context);
+
+        $logMessage = "[{$timestamp}] [{$method}] {$message} | Context: {$contextStr}\n";
+
+        file_put_contents($logFile, $logMessage, FILE_APPEND);
     }
 }
