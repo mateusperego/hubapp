@@ -10,18 +10,22 @@ class GoogleOAuth
     private array $config;
     private string $cacheFile;
 
-    public function __construct(array $config)
+    public function __construct(array $config, string $cnpj, string $app)
     {
         $this->config = $config;
-        $this->cacheFile = __DIR__ . '/../../storage/token_cache.json';
+        $cacheDir = __DIR__ . '/../../storage/cache/tokens';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+        $this->cacheFile = "{$cacheDir}/{$cnpj}_{$app}.json";
     }
 
     public function getAccessToken(): string
     {
-        // if ($this->tokenIsValid()) {
-        //     $data = json_decode(file_get_contents($this->cacheFile), true);
-        //     return $data['access_token'];
-        // }
+        if ($this->tokenIsValid()) {
+            $data = json_decode(file_get_contents($this->cacheFile), true);
+            return $data['access_token'];
+        }
 
         return $this->requestNewToken();
     }

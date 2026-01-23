@@ -28,7 +28,7 @@ class PushNotificationController
 
             $config = self::getFirebaseConfig($cnpj, $app);
 
-            $oauth = new GoogleOAuth($config);
+            $oauth = new GoogleOAuth($config, $cnpj, $app);
             $accessToken = $oauth->getAccessToken();
 
             $fcm = new FcmClient($config['project_id']);
@@ -82,7 +82,7 @@ class PushNotificationController
 
             $config = self::getFirebaseConfig($cnpj, $app);
 
-            $oauth = new GoogleOAuth($config);
+            $oauth = new GoogleOAuth($config, $cnpj, $app);
             $accessToken = $oauth->getAccessToken();
 
             $fcm = new FcmClient($config['project_id']);
@@ -141,7 +141,7 @@ class PushNotificationController
 
             $config = self::getFirebaseConfig($cnpj, $app);
 
-            $oauth = new GoogleOAuth($config);
+            $oauth = new GoogleOAuth($config, $cnpj, $app);
             $accessToken = $oauth->getAccessToken();
 
             $fcm = new FcmClient($config['project_id']);
