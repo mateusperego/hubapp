@@ -132,6 +132,33 @@ class LetsSignService
     }
 
     /**
+     * Cria uma solicitação de assinatura a partir de um arquivo PDF
+     *
+     * @param string $accountId UUID da conta LetsSign
+     * @param string $token Token de autenticação do parceiro
+     * @param array $payload Dados do documento para assinatura (sem contentFile)
+     * @param string $fileContent Conteúdo binário do arquivo PDF
+     * @return array Resposta da API com documentId
+     */
+    public static function createDocumentSignatureFromFile(
+        string $accountId,
+        string $token,
+        array $payload,
+        string $fileContent
+    ): array {
+        // Converter conteúdo binário para base64
+        $payload['contentFile'] = base64_encode($fileContent);
+
+        // Definir contentType se não existir
+        if (!isset($payload['contentType'])) {
+            $payload['contentType'] = 'application/pdf';
+        }
+
+        // Chamar método existente
+        return self::createDocumentSignature($accountId, $token, $payload);
+    }
+
+    /**
      * Registra erros no log
      */
     private static function logError(string $method, string $message, array $context = []): void

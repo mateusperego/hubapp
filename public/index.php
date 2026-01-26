@@ -86,6 +86,12 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
     );
 
     $r->addRoute(
+        'POST',
+        '/public/letssign/sign-upload',
+        [LetsSignController::class, 'signDocumentWithUpload']
+    );
+
+    $r->addRoute(
         'GET',
         '/public/letssign/download/{documentId}',
         [LetsSignController::class, 'downloadSignedDocument']
