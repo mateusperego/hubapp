@@ -37,9 +37,7 @@ class LetsSignService
         try {
             $client = self::getClient($token);
 
-            $response = $client->post("accounts/{$accountId}/document-signatures", [
-                'json' => $documentData,
-            ]);
+            $response = $client->post("accounts/{$accountId}/document-signatures", [json_encode($documentData)]);
 
             $body = json_decode($response->getBody()->getContents(), true);
 
