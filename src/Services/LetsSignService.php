@@ -47,10 +47,8 @@ class LetsSignService
             'base_uri' => self::BASE_URL,
             'headers' => [
                 'Authorization' => $token,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
+                'Content-Type' => 'application/pdf',
             ],
-            'timeout' => 60,
         ]);
     }
 
