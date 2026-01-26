@@ -47,7 +47,7 @@ class LetsSignService
             'base_uri' => self::BASE_URL,
             'headers' => [
                 'Authorization' => $token,
-                'Content-Type' => 'application/pdf',
+                'Content-Type' => 'application/json',
             ],
         ]);
     }
@@ -67,7 +67,7 @@ class LetsSignService
             $client = self::getClient($token, true);
 
             $response = $client->post("accounts/{$accountId}/document-signatures", [
-                'body' => json_encode($documentData),
+                'json' => $documentData,
             ]);
 
             $body = json_decode($response->getBody()->getContents(), true);
