@@ -5,6 +5,7 @@ namespace Agroprodutor\Controllers;
 use Agroprodutor\Services\LetsSignService;
 use Agroprodutor\Helpers\RequestHelper;
 use Agroprodutor\Helpers\ResponseHelper;
+use finfo;
 
 class LetsSignController
 {
@@ -173,9 +174,8 @@ class LetsSignController
         }
 
         // Validar tipo MIME (application/pdf)
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $_FILES['file']['tmp_name']);
-        finfo_close($finfo);
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($_FILES['file']['tmp_name']);
 
         if ($mimeType !== 'application/pdf') {
             ResponseHelper::error('Apenas arquivos PDF são aceitos', 400);
