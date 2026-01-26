@@ -64,7 +64,14 @@ class LetsSignController
         $result = LetsSignService::createDocumentSignature($accountId, $token, $documentData);
 
         if (!$result['success']) {
-            ResponseHelper::error($result['error'], 500);
+            $statusCode = $result['status'] ?? 500;
+            ResponseHelper::json([
+                'success' => false,
+                'error' => $result['error'],
+                'errors' => $result['errors'] ?? [],
+                'problems' => $result['problems'] ?? [],
+                'traceId' => $result['traceId'] ?? null,
+            ], $statusCode);
             return;
         }
 
@@ -216,7 +223,14 @@ class LetsSignController
         $result = LetsSignService::createDocumentSignatureFromFile($accountId, $token, $payload, $fileContent);
 
         if (!$result['success']) {
-            ResponseHelper::error($result['error'], 500);
+            $statusCode = $result['status'] ?? 500;
+            ResponseHelper::json([
+                'success' => false,
+                'error' => $result['error'],
+                'errors' => $result['errors'] ?? [],
+                'problems' => $result['problems'] ?? [],
+                'traceId' => $result['traceId'] ?? null,
+            ], $statusCode);
             return;
         }
 

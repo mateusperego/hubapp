@@ -4,6 +4,7 @@ namespace Agroprodutor\Services;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use Psr\Http\Message\RequestInterface;
@@ -74,6 +75,25 @@ class LetsSignService
             return [
                 'success' => true,
                 'data' => $body,
+            ];
+        } catch (RequestException $e) {
+            $apiError = self::parseApiError($e);
+
+            self::logError('createDocumentSignature', $apiError['message'], [
+                'accountId' => $accountId,
+                'documentName' => $documentData['documentName'] ?? 'unknown',
+                'status' => $apiError['status'],
+                'errors' => $apiError['errors'],
+                'traceId' => $apiError['traceId'],
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $apiError['message'],
+                'status' => $apiError['status'],
+                'errors' => $apiError['errors'],
+                'problems' => $apiError['problems'],
+                'traceId' => $apiError['traceId'],
             ];
         } catch (GuzzleException $e) {
             self::logError('createDocumentSignature', $e->getMessage(), [
@@ -184,6 +204,49 @@ class LetsSignService
 
         // Chamar método existente
         return self::createDocumentSignature($accountId, $token, $payload);
+    }
+
+    /**
+     * Extrai informações de erro da resposta da API
+     */
+    private static function parseApiError(RequestException $e): array
+    {
+        $response = $e->getResponse();
+        $status = $response ? $response->getStatusCode() : 0;
+        $body = $response ? (string) $response->getBody() : null;
+
+        $defaultError = [
+            'message' => $e->getMessage(),
+            'status' => $status,
+            'title' => null,
+            'errors' => [],
+            'problems' => [],
+            'traceId' => null,
+        ];
+
+        if (!$body) {
+            return $defaultError;
+        }
+
+        $data = json_decode($body, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return $defaultError;
+        }
+
+        // Extrair mensagem principal dos erros
+        $errorMessage = $data['title'] ?? 'Erro na API LetsSign';
+        if (!empty($data['errors']) && is_array($data['errors'])) {
+            $errorMessage = implode('; ', $data['errors']);
+        }
+
+        return [
+            'message' => $errorMessage,
+            'status' => $data['status'] ?? $status,
+            'title' => $data['title'] ?? null,
+            'errors' => $data['errors'] ?? [],
+            'problems' => $data['problems'] ?? [],
+            'traceId' => $data['traceId'] ?? null,
+        ];
     }
 
     /**
