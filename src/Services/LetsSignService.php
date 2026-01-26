@@ -4,15 +4,45 @@ namespace Agroprodutor\Services;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use Psr\Http\Message\RequestInterface;
 use Exception;
 
 class LetsSignService
 {
     private const BASE_URL = 'https://api.letssign.com.br/partners/v1/';
 
-    private static function getClient(string $token): Client
+    private static function getClient(string $token, bool $debug = false): Client
     {
+        $stack = HandlerStack::create();
+
+        if ($debug) {
+            $stack->push(Middleware::mapRequest(function (RequestInterface $request) {
+                $body = (string) $request->getBody();
+
+                // Truncar contentFile no log para não ficar gigante
+                $bodyDecoded = json_decode($body, true);
+                if (isset($bodyDecoded['contentFile'])) {
+                    $bodyDecoded['contentFile'] = substr($bodyDecoded['contentFile'], 0, 100) . '...[TRUNCATED]';
+                    $bodyLog = json_encode($bodyDecoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+                } else {
+                    $bodyLog = $body;
+                }
+
+                self::logRequest(
+                    $request->getMethod(),
+                    (string) $request->getUri(),
+                    $request->getHeaders(),
+                    $bodyLog
+                );
+
+                return $request;
+            }));
+        }
+
         return new Client([
+            'handler' => $stack,
             'base_uri' => self::BASE_URL,
             'headers' => [
                 'Authorization' => $token,
@@ -35,7 +65,7 @@ class LetsSignService
     public static function createDocumentSignature(string $accountId, string $token, array $documentData): array
     {
         try {
-            $client = self::getClient($token);
+            $client = self::getClient($token, true);
 
             $response = $client->post("accounts/{$accountId}/document-signatures", ['json' => $documentData]);
 
@@ -170,7 +200,35 @@ class LetsSignService
         $timestamp = date('Y-m-d H:i:s');
         $contextStr = json_encode($context);
 
-        $logMessage = "[{$timestamp}] [{$method}] {$message} | Context: {$contextStr}\n";
+        $logMessage = "[{$timestamp}] [ERROR] [{$method}] {$message} | Context: {$contextStr}\n";
+
+        file_put_contents($logFile, $logMessage, FILE_APPEND);
+    }
+
+    /**
+     * Registra requisições no log para debug
+     */
+    private static function logRequest(string $method, string $uri, array $headers, string $body): void
+    {
+        $logDir = __DIR__ . '/../../storage/logs';
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0777, true);
+        }
+
+        $logFile = $logDir . '/letssign_' . date('Y-m-d') . '.log';
+        $timestamp = date('Y-m-d H:i:s');
+
+        // Ocultar token no log
+        if (isset($headers['Authorization'])) {
+            $headers['Authorization'] = ['***HIDDEN***'];
+        }
+
+        $headersStr = json_encode($headers, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+        $logMessage = "[{$timestamp}] [REQUEST] {$method} {$uri}\n";
+        $logMessage .= "Headers: {$headersStr}\n";
+        $logMessage .= "Body: {$body}\n";
+        $logMessage .= str_repeat('-', 80) . "\n";
 
         file_put_contents($logFile, $logMessage, FILE_APPEND);
     }
