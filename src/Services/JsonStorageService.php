@@ -87,25 +87,29 @@ class JsonStorageService
         return $return;
     }
 
-    public static function register(string $apelido, string $moduleName, array $registro): bool
+    public static function register(string $apelido, string $moduleName, array $registro): array
     {
         $basePath = self::getBasePath($apelido, $moduleName);
         self::ensureDirectoryExists($basePath);
 
         if (!isset($registro['CNPJCPF'])) {
-            return false;
+            return ['success' => false, 'error' => 'CPF_NAO_INFORMADO'];
         }
 
         $cnpjcpf = $registro['CNPJCPF'];
         $filePath = $basePath . $cnpjcpf . '.json';
 
         if (file_exists($filePath)) {
-            unlink($filePath);
+            return ['success' => false, 'error' => 'CPF_JA_CADASTRADO'];
         }
 
         $result = file_put_contents($filePath, json_encode($registro));
 
-        return $result !== false;
+        if ($result === false) {
+            return ['success' => false, 'error' => 'ERRO_AO_SALVAR'];
+        }
+
+        return ['success' => true];
     }
 
     public static function validateCredentials(string $apelido, string $moduleName, string $cnpjcpf, string $password): bool

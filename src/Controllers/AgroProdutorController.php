@@ -28,9 +28,9 @@ class AgroProdutorController
     {
         $registro = RequestHelper::getJsonInput();
 
-        $success = JsonStorageService::register($apelido, $moduleName, $registro);
+        $result = JsonStorageService::register($apelido, $moduleName, $registro);
 
-        ResponseHelper::json(['SUCCESS' => $success]);
+        ResponseHelper::json($result);
     }
 
     public static function validateCredentials(string $apelido, string $moduleName): void
