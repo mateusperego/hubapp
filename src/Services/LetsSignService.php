@@ -158,7 +158,7 @@ class LetsSignService
         try {
             $client = self::getClient($token);
 
-            $response = $client->get("accounts/{$accountId}/documents/{$documentId}");
+            $response = $client->get("accounts/{$accountId}/document-signatures/{$documentId}/status");
 
             $body = json_decode($response->getBody()->getContents(), true);
 
