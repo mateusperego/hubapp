@@ -57,7 +57,7 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
 
     $r->addRoute(
         'DELETE',
-        '/public/auth/{apelido}/delete',
+        '/public/agroprodutor/auth/{apelido}/delete',
         [AgroProdutorController::class, 'deleteAuth']
     );
 

@@ -56,12 +56,12 @@ class AgroProdutorController
     {
         $dados = RequestHelper::getJsonInput();
 
-        if (!isset($dados['cnpjcpf'])) {
-            ResponseHelper::error('Campo cnpjcpf é obrigatório', 400);
+        if (!isset($dados['CNPJCPF'])) {
+            ResponseHelper::error('Campo CNPJCPF é obrigatório', 400);
             return;
         }
 
-        $result = JsonStorageService::deleteAuth($apelido, $dados['cnpjcpf']);
+        $result = JsonStorageService::deleteAuth($apelido, $dados['CNPJCPF']);
 
         ResponseHelper::json($result);
     }
