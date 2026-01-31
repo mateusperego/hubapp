@@ -9,7 +9,8 @@
       "WebFetch(domain:api.letssign.com.br)",
       "Bash(dir C:UsersLucasDesktopagroprodutor /B)",
       "WebFetch(domain:letssign.notion.site)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(php -l:*)"
     ]
   }
 }

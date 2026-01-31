@@ -51,4 +51,18 @@ class AgroProdutorController
 
         ResponseHelper::json(['VALID' => $valid]);
     }
+
+    public static function deleteAuth(string $apelido): void
+    {
+        $dados = RequestHelper::getJsonInput();
+
+        if (!isset($dados['cnpjcpf'])) {
+            ResponseHelper::error('Campo cnpjcpf é obrigatório', 400);
+            return;
+        }
+
+        $result = JsonStorageService::deleteAuth($apelido, $dados['cnpjcpf']);
+
+        ResponseHelper::json($result);
+    }
 }

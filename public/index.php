@@ -55,6 +55,12 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         [AgroProdutorController::class, 'validateCredentials']
     );
 
+    $r->addRoute(
+        'DELETE',
+        '/public/auth/{apelido}/delete',
+        [AgroProdutorController::class, 'deleteAuth']
+    );
+
     /* =======================
      * PUSH / FIREBASE
      * ======================= */

@@ -130,4 +130,20 @@ class JsonStorageService
 
         return false;
     }
+
+    public static function deleteAuth(string $apelido, string $cnpjcpf): array
+    {
+        $basePath = self::getBasePath($apelido, 'auth');
+        $filePath = $basePath . $cnpjcpf . '.json';
+
+        if (!file_exists($filePath)) {
+            return ['success' => false, 'error' => 'REGISTRO_NAO_ENCONTRADO'];
+        }
+
+        if (unlink($filePath)) {
+            return ['success' => true];
+        }
+
+        return ['success' => false, 'error' => 'ERRO_AO_EXCLUIR'];
+    }
 }
