@@ -7,9 +7,13 @@ use Exception;
 
 class DanfeService
 {
-    public static function getBasePath(string $apelido, string $moduleName): string
+    public static function getBasePath(string $apelido, string $moduleName, ?string $clifor = null): string
     {
-        return __DIR__ . "/../../storage/pdf/{$apelido}/{$moduleName}/";
+        $path = __DIR__ . "/../../storage/pdf/{$apelido}/{$moduleName}/";
+        if ($clifor !== null) {
+            $path .= "{$clifor}/";
+        }
+        return $path;
     }
 
     public static function ensureDirectoryExists(string $path): void
@@ -53,11 +57,12 @@ class DanfeService
             $erros = [];
 
             foreach ($registros as $registro) {
-                if (!isset($registro['CLIFOR']) || !isset($registro['XML_RETORNO'])) {
+                if (!isset($registro['CLIFOR']) || !isset($registro['XML_RETORNO']) || !isset($registro['DATA_MOV'])) {
                     continue;
                 }
 
                 $clifor = $registro['CLIFOR'];
+                $dataMov = $registro['DATA_MOV'];
                 $xml = $registro['XML_RETORNO'];
 
                 try {
@@ -66,7 +71,10 @@ class DanfeService
 
                     $pdf = $danfe->render();
 
-                    $filePath = $basePath . $clifor . '.pdf';
+                    $cliforPath = self::getBasePath($apelido, $moduleName, $clifor);
+                    self::ensureDirectoryExists($cliforPath);
+
+                    $filePath = $cliforPath . $dataMov . '.pdf';
 
                     if (file_put_contents($filePath, $pdf) !== false) {
                         $arquivosGerados++;
@@ -76,8 +84,9 @@ class DanfeService
                         'apelido' => $apelido,
                         'moduleName' => $moduleName,
                         'clifor' => $clifor,
+                        'dataMov' => $dataMov,
                     ]);
-                    $erros[] = "CLIFOR $clifor: " . $e->getMessage();
+                    $erros[] = "CLIFOR $clifor (DATA_MOV $dataMov): " . $e->getMessage();
                 }
             }
 

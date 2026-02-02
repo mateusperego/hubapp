@@ -17,9 +17,9 @@ class DanfeController
         ResponseHelper::json($result);
     }
 
-    public static function downloadPdf(string $apelido, string $moduleName, string $clienteId): void
+    public static function downloadPdf(string $apelido, string $moduleName, string $clifor, string $dataMov): void
     {
-        $pdfPath = __DIR__ . "/../../storage/pdf/{$apelido}/{$moduleName}/{$clienteId}.pdf";
+        $pdfPath = __DIR__ . "/../../storage/pdf/{$apelido}/{$moduleName}/{$clifor}/{$dataMov}.pdf";
 
         if (!file_exists($pdfPath)) {
             ResponseHelper::notFound('PDF não encontrado');
@@ -27,6 +27,6 @@ class DanfeController
         }
 
         $content = file_get_contents($pdfPath);
-        ResponseHelper::pdfDownload($content, "{$clienteId}.pdf");
+        ResponseHelper::pdfDownload($content, "{$clifor}_{$dataMov}.pdf");
     }
 }

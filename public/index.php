@@ -24,7 +24,7 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
 
     $r->addRoute(
         'GET',
-        '/public/danfe/{apelido}/{moduleName}/pdf/{clienteId}',
+        '/public/danfe/{apelido}/{moduleName}/pdf/{clifor}/{dataMov}',
         [DanfeController::class, 'downloadPdf']
     );
 
