@@ -74,7 +74,9 @@ class DanfeService
                     $cliforPath = self::getBasePath($apelido, $moduleName, $clifor);
                     self::ensureDirectoryExists($cliforPath);
 
-                    $filePath = $cliforPath . $dataMov . '.pdf';
+                    // Extrai apenas ano e mês do DATA_MOV (formato esperado: YYYY-MM-DD)
+                    $anoMes = substr($dataMov, 0, 7); // Resultado: YYYY-MM
+                    $filePath = $cliforPath . $anoMes . '.pdf';
 
                     if (file_put_contents($filePath, $pdf) !== false) {
                         $arquivosGerados++;
