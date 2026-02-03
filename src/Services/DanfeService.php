@@ -23,6 +23,27 @@ class DanfeService
         }
     }
 
+    private static function deleteDirectory(string $path): bool
+    {
+        if (!is_dir($path)) {
+            return true;
+        }
+
+        $items = array_diff(scandir($path), ['.', '..']);
+
+        foreach ($items as $item) {
+            $itemPath = $path . DIRECTORY_SEPARATOR . $item;
+
+            if (is_dir($itemPath)) {
+                self::deleteDirectory($itemPath);
+            } else {
+                unlink($itemPath);
+            }
+        }
+
+        return rmdir($path);
+    }
+
     public static function configurarDanfe(Danfe $danfe, string $cnpj): void
     {
         $danfe->descProdInfoComplemento = false;
@@ -47,6 +68,7 @@ class DanfeService
     {
         try {
             $basePath = self::getBasePath($apelido, $moduleName);
+            self::deleteDirectory($basePath);
             self::ensureDirectoryExists($basePath);
 
             if (empty($registros)) {
