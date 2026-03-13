@@ -131,21 +131,6 @@ class JsonStorageService
         return false;
     }
 
-    public static function listCpf(string $apelido, string $moduleName): array
-    {
-        $basePath = self::getBasePath($apelido, $moduleName);
-        $cpfs = [];
-
-        $arquivos = glob($basePath . '*.json');
-        if ($arquivos !== false) {
-            foreach ($arquivos as $arquivo) {
-                $cpfs[] = pathinfo($arquivo, PATHINFO_FILENAME);
-            }
-        }
-
-        return $cpfs;
-    }
-
     public static function listAuth(string $apelido): array
     {
         $basePath = self::getBasePath($apelido, 'auth');
