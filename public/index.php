@@ -56,6 +56,18 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
     );
 
     $r->addRoute(
+        'GET',
+        '/public/agroprodutor/{apelido}/{moduleName}/listcpf',
+        [AgroProdutorController::class, 'listCpf']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/agroprodutor/{apelido}/auth/list',
+        [AgroProdutorController::class, 'listAuth']
+    );
+
+    $r->addRoute(
         'DELETE',
         '/public/agroprodutor/{apelido}/auth/delete',
         [AgroProdutorController::class, 'deleteAuth']

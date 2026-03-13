@@ -52,6 +52,18 @@ class AgroProdutorController
         ResponseHelper::json(['VALID' => $valid]);
     }
 
+    public static function listCpf(string $apelido, string $moduleName): void
+    {
+        $result = JsonStorageService::listCpf($apelido, $moduleName);
+        ResponseHelper::json($result);
+    }
+
+    public static function listAuth(string $apelido): void
+    {
+        $result = JsonStorageService::listAuth($apelido);
+        ResponseHelper::json($result);
+    }
+
     public static function deleteAuth(string $apelido): void
     {
         $dados = RequestHelper::getJsonInput();

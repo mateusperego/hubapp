@@ -131,6 +131,40 @@ class JsonStorageService
         return false;
     }
 
+    public static function listCpf(string $apelido, string $moduleName): array
+    {
+        $basePath = self::getBasePath($apelido, $moduleName);
+        $cpfs = [];
+
+        $arquivos = glob($basePath . '*.json');
+        if ($arquivos !== false) {
+            foreach ($arquivos as $arquivo) {
+                $cpfs[] = pathinfo($arquivo, PATHINFO_FILENAME);
+            }
+        }
+
+        return $cpfs;
+    }
+
+    public static function listAuth(string $apelido): array
+    {
+        $basePath = self::getBasePath($apelido, 'auth');
+        $result = [];
+
+        $arquivos = glob($basePath . '*.json');
+        if ($arquivos !== false) {
+            foreach ($arquivos as $arquivo) {
+                $conteudo = file_get_contents($arquivo);
+                $dados = json_decode($conteudo, true);
+                if ($dados !== null) {
+                    $result[] = $dados;
+                }
+            }
+        }
+
+        return $result;
+    }
+
     public static function deleteAuth(string $apelido, string $cnpjcpf): array
     {
         $basePath = self::getBasePath($apelido, 'auth');
