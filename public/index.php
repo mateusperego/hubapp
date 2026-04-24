@@ -100,6 +100,12 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
 
     $r->addRoute(
         'GET',
+        '/public/images/{cnpj}',
+        [ImageController::class, 'list']
+    );
+
+    $r->addRoute(
+        'GET',
         '/public/images/{cnpj}/{codigo}',
         [ImageController::class, 'serve']
     );

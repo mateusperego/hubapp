@@ -71,6 +71,34 @@ class ImageService
         return null;
     }
 
+    public static function listImages(string $cnpj): array
+    {
+        $cnpj = self::sanitizeCnpj($cnpj);
+
+        if (empty($cnpj)) {
+            return [];
+        }
+
+        $storagePath = self::getStoragePath($cnpj);
+
+        if (!is_dir($storagePath)) {
+            return [];
+        }
+
+        $images = [];
+        $files = glob($storagePath . '*.{jpg,png,webp}', GLOB_BRACE);
+
+        foreach ($files as $filePath) {
+            $codigo = pathinfo($filePath, PATHINFO_FILENAME);
+            $images[] = [
+                'codigo' => $codigo,
+                'url'    => "/public/images/{$cnpj}/{$codigo}",
+            ];
+        }
+
+        return $images;
+    }
+
     private static function validateFile(array $file): array
     {
         if (!isset($file['tmp_name']) || $file['error'] !== UPLOAD_ERR_OK) {

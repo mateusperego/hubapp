@@ -46,6 +46,16 @@ class ImageController
         ]);
     }
 
+    public function list(string $cnpj): void
+    {
+        $images = ImageService::listImages($cnpj);
+
+        ResponseHelper::json([
+            'success' => true,
+            'data'    => $images,
+        ]);
+    }
+
     public function serve(string $cnpj, string $codigo): void
     {
         try {
