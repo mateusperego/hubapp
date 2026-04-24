@@ -1,6 +1,6 @@
 <?php
 
-namespace Agroprodutor\Auth;
+namespace HubApp\Auth;
 
 use Firebase\JWT\JWT;
 use GuzzleHttp\Client;

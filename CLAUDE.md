@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Agroprodutor is a PHP backend API for agricultural producer management, primarily focused on generating DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) PDF documents from NFe XML files. It serves as a backend for a mobile application.
+HubApp is a PHP backend API serving as a multi-purpose hub for business applications, including DANFE (Documento Auxiliar da Nota Fiscal Eletrônica) PDF generation from NFe XML files, push notifications, document signing, and image management. It serves as a backend for a mobile application.
 
 ## Technology Stack
 
@@ -57,7 +57,7 @@ composer clear-cache
 3. `ResponseHelper::pdf()` outputs the PDF with appropriate headers
 
 ### Namespace
-- All classes use the `Agroprodutor\` namespace (PSR-4 autoloading via Composer)
+- All classes use the `HubApp\` namespace (PSR-4 autoloading via Composer)
 
 ### Legacy Code
 - `src/Controllers/agro_produtor.php` contains legacy CodeIgniter controller code (uses `CI_Controller`)

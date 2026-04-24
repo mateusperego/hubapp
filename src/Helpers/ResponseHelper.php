@@ -1,6 +1,6 @@
 <?php
 
-namespace Agroprodutor\Helpers;
+namespace HubApp\Helpers;
 
 class ResponseHelper
 {

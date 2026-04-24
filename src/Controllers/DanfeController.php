@@ -1,10 +1,10 @@
 <?php
 
-namespace Agroprodutor\Controllers;
+namespace HubApp\Controllers;
 
-use Agroprodutor\Services\DanfeService;
-use Agroprodutor\Helpers\RequestHelper;
-use Agroprodutor\Helpers\ResponseHelper;
+use HubApp\Services\DanfeService;
+use HubApp\Helpers\RequestHelper;
+use HubApp\Helpers\ResponseHelper;
 
 class DanfeController
 {

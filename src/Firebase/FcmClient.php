@@ -1,6 +1,6 @@
 <?php
 
-namespace Agroprodutor\Firebase;
+namespace HubApp\Firebase;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Agroprodutor\Services;
+namespace HubApp\Services;
 
 use NFePHP\DA\NFe\Danfe;
 use Exception;

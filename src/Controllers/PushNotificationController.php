@@ -1,9 +1,9 @@
 <?php
 
-namespace Agroprodutor\Controllers;
+namespace HubApp\Controllers;
 
-use Agroprodutor\Auth\GoogleOAuth;
-use Agroprodutor\Firebase\FcmClient;
+use HubApp\Auth\GoogleOAuth;
+use HubApp\Firebase\FcmClient;
 
 class PushNotificationController
 {

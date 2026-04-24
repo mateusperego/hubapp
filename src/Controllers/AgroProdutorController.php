@@ -1,10 +1,10 @@
 <?php
 
-namespace Agroprodutor\Controllers;
+namespace HubApp\Controllers;
 
-use Agroprodutor\Services\JsonStorageService;
-use Agroprodutor\Helpers\RequestHelper;
-use Agroprodutor\Helpers\ResponseHelper;
+use HubApp\Services\JsonStorageService;
+use HubApp\Helpers\RequestHelper;
+use HubApp\Helpers\ResponseHelper;
 
 class AgroProdutorController
 {

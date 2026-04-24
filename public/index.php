@@ -5,11 +5,11 @@ require __DIR__ . '/../vendor/autoload.php';
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
 $dotenv->load();
 
-use Agroprodutor\Controllers\DanfeController;
-use Agroprodutor\Controllers\AgroProdutorController;
-use Agroprodutor\Controllers\PushNotificationController;
-use Agroprodutor\Controllers\LetsSignController;
-use Agroprodutor\Controllers\ImageController;
+use HubApp\Controllers\DanfeController;
+use HubApp\Controllers\AgroProdutorController;
+use HubApp\Controllers\PushNotificationController;
+use HubApp\Controllers\LetsSignController;
+use HubApp\Controllers\ImageController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -30,7 +30,7 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
     );
 
     /* =======================
-     * AGROPRODUTOR
+     * HUBAPP
      * ======================= */
     $r->addRoute(
         'POST',

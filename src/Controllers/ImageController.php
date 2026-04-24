@@ -1,10 +1,10 @@
 <?php
 
-namespace Agroprodutor\Controllers;
+namespace HubApp\Controllers;
 
-use Agroprodutor\Services\ImageService;
-use Agroprodutor\Helpers\RequestHelper;
-use Agroprodutor\Helpers\ResponseHelper;
+use HubApp\Services\ImageService;
+use HubApp\Helpers\RequestHelper;
+use HubApp\Helpers\ResponseHelper;
 use finfo;
 
 class ImageController
