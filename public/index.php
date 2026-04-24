@@ -165,18 +165,9 @@ switch ($routeInfo[0]) {
         [$controller, $method] = $routeInfo[1];
         $vars = $routeInfo[2];
 
-        try {
-            call_user_func_array(
-                [new $controller, $method],
-                $vars
-            );
-        } catch (\Throwable $e) {
-            http_response_code(500);
-            echo json_encode([
-                'error' => $e->getMessage(),
-                'file'  => $e->getFile(),
-                'line'  => $e->getLine(),
-            ]);
-        }
+        call_user_func_array(
+            [new $controller, $method],
+            $vars
+        );
         break;
 }
