@@ -46,9 +46,9 @@ class ImageController
         ]);
     }
 
-    public function serve(string $cnpj, string $filename): void
+    public function serve(string $cnpj, string $codigo): void
     {
-        $filePath = ImageService::getImagePath($cnpj, $filename);
+        $filePath = ImageService::getImagePath($cnpj, $codigo);
 
         if ($filePath === null) {
             ResponseHelper::notFound('Imagem não encontrada');

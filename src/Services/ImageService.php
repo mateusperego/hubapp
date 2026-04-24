@@ -46,26 +46,29 @@ class ImageService
         return [
             'success' => true,
             'filename' => $filename,
-            'url' => "/public/images/{$cnpj}/{$filename}",
+            'url' => "/public/images/{$cnpj}/{$codigo}",
         ];
     }
 
-    public static function getImagePath(string $cnpj, string $filename): ?string
+    public static function getImagePath(string $cnpj, string $codigo): ?string
     {
         $cnpj = self::sanitizeCnpj($cnpj);
-        $filename = basename($filename);
+        $codigo = self::sanitizeCodigo(pathinfo($codigo, PATHINFO_FILENAME));
 
-        if (empty($cnpj) || empty($filename)) {
+        if (empty($cnpj) || empty($codigo)) {
             return null;
         }
 
-        $filePath = self::getStoragePath($cnpj) . $filename;
+        $storagePath = self::getStoragePath($cnpj);
 
-        if (!file_exists($filePath) || !is_file($filePath)) {
-            return null;
+        foreach (['jpg', 'png', 'webp'] as $ext) {
+            $filePath = $storagePath . $codigo . '.' . $ext;
+            if (file_exists($filePath) && is_file($filePath)) {
+                return $filePath;
+            }
         }
 
-        return $filePath;
+        return null;
     }
 
     private static function validateFile(array $file): array
