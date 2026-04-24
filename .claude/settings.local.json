@@ -17,7 +17,12 @@
       "Bash(composer dump-autoload *)",
       "Bash(php composer.phar dump-autoload)",
       "Bash(/usr/local/bin/composer dump-autoload *)",
-      "Bash(php /usr/local/bin/composer dump-autoload)"
+      "Bash(php /usr/local/bin/composer dump-autoload)",
+      "Bash(git -C /Users/lucassilva/Dev/Aplicativos/hubapp status)",
+      "Bash(git -C /Users/lucassilva/Dev/Aplicativos/hubapp diff)",
+      "Bash(git -C /Users/lucassilva/Dev/Aplicativos/hubapp log --oneline -5)",
+      "Bash(git -C /Users/lucassilva/Dev/Aplicativos/hubapp add public/index.php src/Controllers/ImageController.php src/Services/ImageService.php .claude/settings.local.json)",
+      "Bash(git -C /Users/lucassilva/Dev/Aplicativos/hubapp commit -m ' *)"
     ]
   }
 }

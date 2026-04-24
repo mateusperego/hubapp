@@ -59,6 +59,19 @@ class ImageController
         ]);
     }
 
+    public function delete(string $cnpj, string $codigo): void
+    {
+        $result = ImageService::deleteImage($cnpj, $codigo);
+
+        if (!$result['success']) {
+            $statusCode = $result['error'] === 'Imagem não encontrada' ? 404 : 500;
+            ResponseHelper::error($result['error'], $statusCode);
+            return;
+        }
+
+        ResponseHelper::json(['success' => true, 'message' => 'Imagem excluída com sucesso']);
+    }
+
     public function serve(string $cnpj, string $codigo): void
     {
         try {

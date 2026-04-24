@@ -72,6 +72,21 @@ class ImageService
         return null;
     }
 
+    public static function deleteImage(string $cnpj, string $codigo): array
+    {
+        $filePath = self::getImagePath($cnpj, $codigo);
+
+        if ($filePath === null) {
+            return ['success' => false, 'error' => 'Imagem não encontrada'];
+        }
+
+        if (!unlink($filePath)) {
+            return ['success' => false, 'error' => 'Erro ao excluir imagem'];
+        }
+
+        return ['success' => true];
+    }
+
     public static function listImages(string $cnpj, string $baseUrl = ''): array
     {
         $cnpj = self::sanitizeCnpj($cnpj);

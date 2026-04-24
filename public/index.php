@@ -110,6 +110,12 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         [ImageController::class, 'serve']
     );
 
+    $r->addRoute(
+        'DELETE',
+        '/public/images/{cnpj}/{codigo}',
+        [ImageController::class, 'delete']
+    );
+
     /* =======================
      * LETSSIGN
      * ======================= */
