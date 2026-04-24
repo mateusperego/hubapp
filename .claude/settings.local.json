@@ -10,7 +10,10 @@
       "Bash(dir C:UsersLucasDesktopagroprodutor /B)",
       "WebFetch(domain:letssign.notion.site)",
       "WebSearch",
-      "Bash(php -l:*)"
+      "Bash(php -l:*)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
