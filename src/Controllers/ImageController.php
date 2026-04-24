@@ -48,25 +48,29 @@ class ImageController
 
     public function serve(string $cnpj, string $codigo): void
     {
-        $filePath = ImageService::getImagePath($cnpj, $codigo);
+        try {
+            $filePath = ImageService::getImagePath($cnpj, $codigo);
 
-        if ($filePath === null) {
-            ResponseHelper::notFound('Imagem não encontrada');
-            return;
+            if ($filePath === null) {
+                ResponseHelper::notFound('Imagem não encontrada');
+                return;
+            }
+
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mimeType = $finfo->file($filePath);
+
+            $allowedServeMimes = ['image/jpeg', 'image/png', 'image/webp'];
+            if (!in_array($mimeType, $allowedServeMimes, true)) {
+                ResponseHelper::error('Tipo de arquivo não suportado', 415);
+                return;
+            }
+
+            header('Content-Type: ' . $mimeType);
+            header('Content-Length: ' . filesize($filePath));
+            header('Cache-Control: public, max-age=86400');
+            readfile($filePath);
+        } catch (\Throwable $e) {
+            ResponseHelper::error('Erro interno: ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine(), 500);
         }
-
-        $finfo = new finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->file($filePath);
-
-        $allowedServeMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!in_array($mimeType, $allowedServeMimes, true)) {
-            ResponseHelper::error('Tipo de arquivo não suportado', 415);
-            return;
-        }
-
-        header('Content-Type: ' . $mimeType);
-        header('Content-Length: ' . filesize($filePath));
-        header('Cache-Control: public, max-age=86400');
-        readfile($filePath);
     }
 }
