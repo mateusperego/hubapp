@@ -52,7 +52,12 @@ class ImageController
             $filePath = ImageService::getImagePath($cnpj, $codigo);
 
             if ($filePath === null) {
-                ResponseHelper::notFound('Imagem não encontrada');
+                $storagePath = __DIR__ . '/../../storage/images/' . preg_replace('/\D/', '', $cnpj) . '/';
+                $searched = [];
+                foreach (['jpg', 'png', 'webp'] as $ext) {
+                    $searched[] = realpath($storagePath) . '/' . pathinfo($codigo, PATHINFO_FILENAME) . '.' . $ext;
+                }
+                ResponseHelper::notFound('Imagem não encontrada. Procurado em: ' . implode(', ', $searched));
                 return;
             }
 
