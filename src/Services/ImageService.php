@@ -47,6 +47,7 @@ class ImageService
             'success' => true,
             'filename' => $filename,
             'url' => "/public/images/{$cnpj}/{$codigo}",
+            'codigo'   => $codigo,
         ];
     }
 
@@ -71,7 +72,7 @@ class ImageService
         return null;
     }
 
-    public static function listImages(string $cnpj): array
+    public static function listImages(string $cnpj, string $baseUrl = ''): array
     {
         $cnpj = self::sanitizeCnpj($cnpj);
 
@@ -92,7 +93,7 @@ class ImageService
             $codigo = pathinfo($filePath, PATHINFO_FILENAME);
             $images[] = [
                 'codigo' => $codigo,
-                'url'    => "/public/images/{$cnpj}/{$codigo}",
+                'url'    => $baseUrl . "/public/images/{$cnpj}/{$codigo}",
             ];
         }
 

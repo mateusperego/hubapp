@@ -36,19 +36,22 @@ class ImageController
             return;
         }
 
+        $baseUrl = RequestHelper::getBaseUrl();
+
         ResponseHelper::json([
             'success' => true,
             'message' => 'Imagem enviada com sucesso',
             'data' => [
                 'filename' => $result['filename'],
-                'url' => $result['url'],
+                'url'      => $baseUrl . $result['url'],
             ],
         ]);
     }
 
     public function list(string $cnpj): void
     {
-        $images = ImageService::listImages($cnpj);
+        $baseUrl = RequestHelper::getBaseUrl();
+        $images  = ImageService::listImages($cnpj, $baseUrl);
 
         ResponseHelper::json([
             'success' => true,

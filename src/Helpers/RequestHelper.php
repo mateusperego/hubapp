@@ -18,6 +18,13 @@ class RequestHelper
      * @param string $name Nome do header (case-insensitive)
      * @return string|null Valor do header ou null se não existir
      */
+    public static function getBaseUrl(): string
+    {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        return $scheme . '://' . $host;
+    }
+
     public static function getHeader(string $name): ?string
     {
         // Converte o nome do header para o formato do $_SERVER
