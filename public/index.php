@@ -9,6 +9,7 @@ use Agroprodutor\Controllers\DanfeController;
 use Agroprodutor\Controllers\AgroProdutorController;
 use Agroprodutor\Controllers\PushNotificationController;
 use Agroprodutor\Controllers\LetsSignController;
+use Agroprodutor\Controllers\ImageController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -86,6 +87,21 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         'POST',
         '/public/push/{cnpj}/{app}/topic',
         [PushNotificationController::class, 'sendToTopic']
+    );
+
+    /* =======================
+     * IMAGES
+     * ======================= */
+    $r->addRoute(
+        'POST',
+        '/public/images/upload',
+        [ImageController::class, 'upload']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/images/{cnpj}/{filename}',
+        [ImageController::class, 'serve']
     );
 
     /* =======================
