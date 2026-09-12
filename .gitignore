@@ -1,0 +1,9 @@
+# Segredos: chaves privadas do Firebase e token do relay.
+.env
+
+vendor/
+
+# Dados de runtime: JSON dos clientes, PDFs gerados, imagens, logs e cache de token.
+storage/
+
+.DS_Store
