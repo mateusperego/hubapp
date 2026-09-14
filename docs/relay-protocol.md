@@ -46,11 +46,18 @@ Vendedor:
 
 ```json
 {"type":"hello","role":"seller","token":"<RELAY_TOKEN>","seller_id":"V0143",
- "seller_name":"Ademir","device":"android 14 / a1b2c3","app_version":"2.0.8+44","db_version":12}
+ "seller_name":"Ademir","tenant":"48707144000109","device":"android 14 / a1b2c3",
+ "app_version":"2.0.8+44","db_version":12}
 ```
 
 Só `role`, `token` e — para o vendedor — `seller_id` são obrigatórios. O resto tem default e
-serve para o operador saber com quem está falando.
+serve para o operador saber com quem está falando. O `tenant` é a empresa do vendedor, e é
+o que localiza os backups dele em `storage/backups/{cnpj}/{sellerId}/`.
+
+> **Campo novo no `hello` precisa entrar em `Handshake::inspectSeller` também.** O relay
+> repassa uma lista fixa de campos — repassar o objeto inteiro deixaria o app escrever
+> qualquer coisa na identidade que o painel confia. O preço é que um campo esquecido ali
+> some no caminho, sem erro e sem aviso.
 
 Resposta ao painel, com o snapshot de presença:
 

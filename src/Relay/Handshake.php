@@ -86,14 +86,22 @@ class Handshake
             return self::reject(self::CLOSE_BAD_TOKEN, "Vendedor {$sellerId} não liberado.");
         }
 
-        // O que o painel mostra na lista de conectados. Só o seller_id é
-        // obrigatório; o resto tem default para um app antigo continuar entrando.
+        // O que o painel mostra na lista de conectados, e o que ele usa para
+        // achar os backups deste vendedor no servidor.
+        //
+        // A lista é fixa de propósito — o relay repassa o que conhece, não o
+        // que o app inventar. O custo disso é que um campo novo no `hello`
+        // precisa ser acrescentado aqui também, ou some no caminho sem aviso.
+        //
+        // Só o seller_id é obrigatório; o resto tem default para um app antigo
+        // continuar entrando.
         return [
             'ok'       => true,
             'role'     => self::ROLE_SELLER,
             'identity' => [
                 'seller_id'   => $sellerId,
                 'seller_name' => (string) ($message['seller_name'] ?? ''),
+                'tenant'      => (string) ($message['tenant'] ?? ''),
                 'device'      => (string) ($message['device'] ?? ''),
                 'app_version' => (string) ($message['app_version'] ?? ''),
                 'db_version'  => (int) ($message['db_version'] ?? 0),
