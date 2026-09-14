@@ -158,13 +158,45 @@ podem conectar. Vazio libera todos.
 
 ## 7. Operação
 
+### Requisitos de PHP
+
+O relay é um processo de linha de comando que fica no ar indefinidamente, e isso pede do
+PHP coisas que uma página web não pede:
+
+| Item | Por quê | Como conferir |
+|---|---|---|
+| `pcntl` e `posix` | O Workerman não sobe sem as duas | `php -m \| grep -E 'pcntl\|posix'` |
+| `disable_functions` vazio | `pcntl_fork`, `pcntl_signal` e `posix_kill` precisam estar liberados | `php -i \| grep disable_functions` |
+| `$argv` disponível | É como `start`/`stop`/`status` chegam ao script | `php -r 'var_dump($argv);' start` |
+| `memory_limit` ≥ 256M | O processo não recicla entre requisições, como o Apache faz | `php -d memory_limit=256M …` no start |
+
+No ambiente Jelastic atual (setembro de 2026) as três primeiras já vêm assim no `php.ini`
+padrão — `extension=pcntl.so` e `extension=posix.so` descomentadas, `disable_functions`
+vazio. O `register_argc_argv = 0` do arquivo **não** atrapalha: o SAPI do CLI força essa
+diretiva para `1`, junto com `max_execution_time = 0`, e nenhuma das duas pode ser mudada
+pelo `php.ini`. Confirme com `php --ini` que o CLI lê o arquivo que você está olhando.
+
+`event.so` fica comentado por padrão. Sem ele o Workerman usa `stream_select`, cujo teto é
+de 1024 descritores — folgado para dezenas de vendedores. Só vale habilitar (o módulo já
+existe no Jelastic) se as conexões simultâneas passarem de algumas centenas.
+
+### Subir
+
 ```bash
 composer install
-php bin/relay.php start      # primeiro plano, para ver o log
-php bin/relay.php start -d   # daemon
+
+php bin/relay.php start                            # primeiro plano, para ver o log
+php -d memory_limit=256M bin/relay.php start -d    # daemon
 php bin/relay.php status
 php bin/relay.php stop
 ```
+
+Ele **não** roda dentro do Apache: o modelo request/response do mod_php/FPM não sustenta
+conexão longa. E ele morre num restart do nó se nada o reiniciar — no Jelastic, o caminho
+usual é um `@reboot` no cron do nó ou um serviço systemd.
+
+Suba a primeira vez em primeiro plano, sem `-d`. O log vai para a tela e um erro de
+extensão ou de porta aparece na hora, em vez de sumir num arquivo.
 
 Variáveis em `.env`:
 
@@ -174,7 +206,13 @@ RELAY_PORT=8443
 RELAY_SELLER_ALLOWLIST=
 ```
 
-Apache, para publicar o endpoint no mesmo domínio e reaproveitar o certificado:
+### Publicar o `/relay`
+
+O relay escuta em `127.0.0.1:8443`, e o Apache publica isso no mesmo domínio — assim o
+`wss://` reaproveita o certificado que já existe, e nenhuma porta nova é exposta.
+
+`ProxyPass` **não é permitido em `.htaccess`**. Ou vai no vhost, pelo config manager do
+Jelastic:
 
 ```apache
 # habilitar: mod_proxy, mod_proxy_http, mod_proxy_wstunnel
@@ -183,8 +221,29 @@ ProxyPassReverse /relay ws://127.0.0.1:8443/
 ProxyTimeout     300
 ```
 
-No Jelastic, o processo precisa subir junto com o nó — pelo supervisor do ambiente ou por um
-entry point que rode `php bin/relay.php start -d`. Ele **não** roda dentro do Apache: o modelo
-request/response do mod_php/FPM não sustenta conexão longa.
+…ou, sem acesso ao vhost, pelo `.htaccess` com a flag `[P]` do `mod_rewrite`, que aceita
+proxy onde o `ProxyPass` não é permitido:
+
+```apache
+RewriteCond %{HTTP:Upgrade} =websocket [NC]
+RewriteRule ^relay$ ws://127.0.0.1:8443/ [P,L]
+```
+
+### Depois de subir
+
+1. **Teste de fumaça**, do repositório do painel:
+
+   ```bash
+   dart tool/simulated_seller.dart --relay wss://<domínio>/relay --token "$RELAY_TOKEN"
+   ```
+
+   Um `← welcome` na tela prova o caminho inteiro: proxy, upgrade, handshake e token.
+
+2. **Deixe 20 minutos ocioso.** É o teste que expõe o balanceador cortando conexão parada
+   antes do heartbeat de 30 s chegar lá. Falha só de madrugada, sem tráfego, e por isso
+   passa despercebida se não for procurada de propósito.
+
+3. **Confirme que `storage/` está em volume persistente.** Já valia para os PDFs e as
+   imagens; o log do relay só acrescenta. Sem volume, tudo se perde a cada redeploy.
 
 Log em `storage/logs/relay_{Y-m-d}.log`, no mesmo padrão dos logs de DANFE e imagem.

@@ -1,9 +1,11 @@
 # Segredos: chaves privadas do Firebase e token do relay.
 .env
 
-vendor/
-
 # Dados de runtime: JSON dos clientes, PDFs gerados, imagens, logs e cache de token.
+# Precisam de volume persistente no Jelastic — não são versionados.
 storage/
+
+# vendor/ NÃO entra aqui de propósito: o deploy deste projeto é por git pull,
+# com as dependências já versionadas. Ignorá-lo deixaria o servidor sem elas.
 
 .DS_Store
