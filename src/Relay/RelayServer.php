@@ -176,6 +176,19 @@ class RelayServer
             return;
         }
 
+        // O painel também pinga, e por outro motivo: quem fica calado por três
+        // janelas é derrubado, e um painel ocioso não tem o que dizer. Sem este
+        // caso o ping dele caía no `unwrap`, virava um aviso de envelope
+        // inválido a cada 30 segundos e o log de verdade se perdia no meio.
+        //
+        // A resposta é o que dá ao painel prova de que este processo está vivo:
+        // o frame de controle do WebSocket pode ser respondido por um proxy no
+        // caminho, e aí a conexão parece boa com o relay morto.
+        if (($message['type'] ?? null) === 'ping') {
+            $connection->send(Envelope::encode(['type' => 'pong']));
+            return;
+        }
+
         $envelope = Envelope::unwrap($message);
 
         if ($envelope === null) {

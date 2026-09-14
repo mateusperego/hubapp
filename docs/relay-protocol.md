@@ -54,6 +54,15 @@ Só `role`, `token` e — para o vendedor — `seller_id` são obrigatórios. O 
 serve para o operador saber com quem está falando. O `tenant` é a empresa do vendedor, e é
 o que localiza os backups dele em `storage/backups/{cnpj}/{sellerId}/`.
 
+> **`seller_id` é um endereço de aparelho, não o código do vendedor.** A regra de substituição
+> (seção 4) faz dele um endereço: o que atende nele é um aparelho, e só um. O mesmo vendedor
+> pode trabalhar em dois celulares — um Android e um iPhone —, e se os dois anunciarem `V0143`
+> o segundo derruba o primeiro. Por isso o app compõe `"<código do vendedor>~<id da instalação>"`
+> (`V0143~6DA5AB97…`), e o relay não precisa fazer nada a respeito: indexar por `seller_id` já
+> está certo quando o endereço é um por aparelho. O que **precisa** de atenção é a
+> `RELAY_SELLER_ALLOWLIST` — ela compara o `seller_id` inteiro, então listar `V0143` ali passa a
+> barrar os dois aparelhos do Ademir. Hoje está vazia, o que libera todos.
+
 > **Campo novo no `hello` precisa entrar em `Handshake::inspectSeller` também.** O relay
 > repassa uma lista fixa de campos — repassar o objeto inteiro deixaria o app escrever
 > qualquer coisa na identidade que o painel confia. O preço é que um campo esquecido ali
@@ -145,6 +154,16 @@ Nenhum tráfego por **90 s** (três janelas) fecha a conexão; no caso de um ven
 
 Ping de aplicação, e não só o frame de controle do WebSocket, porque um proxy intermediário pode
 responder o controle sem que o processo do relay esteja vivo.
+
+**O painel também pinga**, pelo mesmo intervalo e por outro motivo: é o relay que derruba quem
+fica calado por três janelas, e um painel ocioso não tem mais nada a dizer. O relay responde
+esses pings com `{"type":"pong"}` — e é essa resposta que dá ao painel a prova de que o processo
+daqui está vivo, pelo mesmo argumento do parágrafo acima.
+
+As duas mensagens vão nuas, fora do envelope `{seller_id, payload}`: são endereçadas à outra
+ponta, não a um vendedor. Cada lado precisa de um caso próprio para o `pong` nu — sem ele a
+mensagem cai no caminho do envelope e vira uma linha de descarte a cada 30 segundos, que enterra
+o log de verdade.
 
 > **Ponto de atenção no deploy:** o balanceador do Jelastic (nginx) costuma cortar conexão ociosa
 > em 60–75 s. Os 30 s de ping ficam abaixo disso, mas confirme o valor real do ambiente — é a
