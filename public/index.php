@@ -10,6 +10,7 @@ use HubApp\Controllers\AgroProdutorController;
 use HubApp\Controllers\PushNotificationController;
 use HubApp\Controllers\LetsSignController;
 use HubApp\Controllers\ImageController;
+use HubApp\Controllers\BackupController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -87,6 +88,30 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         'POST',
         '/public/push/{cnpj}/{app}/topic',
         [PushNotificationController::class, 'sendToTopic']
+    );
+
+    /* =======================
+     * BACKUPS DOS VENDEDORES
+     *
+     * Autenticados com o RELAY_TOKEN. O app sobe a cópia do dia; o painel
+     * lista e baixa. É o que sobrevive ao aparelho sumir.
+     * ======================= */
+    $r->addRoute(
+        'POST',
+        '/public/backups/{cnpj}/{sellerId}/upload',
+        [BackupController::class, 'upload']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/backups/{cnpj}/{sellerId}',
+        [BackupController::class, 'list']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/backups/{cnpj}/{sellerId}/download/{file}',
+        [BackupController::class, 'download']
     );
 
     /* =======================

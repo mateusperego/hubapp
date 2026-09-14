@@ -156,7 +156,42 @@ tempo constante, para não vazar o segredo por timing.
 `RELAY_SELLER_ALLOWLIST` (opcional, `seller_id` separados por vírgula) restringe quais vendedores
 podem conectar. Vazio libera todos.
 
-## 7. Operação
+## 7. Backups dos vendedores (HTTP, fora do relay)
+
+O app guarda cópias do banco no próprio aparelho — uma por dia, uma antes de cada
+intervenção do suporte, e as que o vendedor pedir. Aquilo resolve desfazer uma correção.
+**Não resolve o celular sumir**: desinstalar o app, formatar, perder, quebrar, trocar de
+aparelho. Justamente quando o backup mais importa. Por isso as cópias também sobem para cá.
+
+Vai por HTTP, e não pelo relay: o relay carrega comandos curtos com teto de 1 MiB por
+frame, e um banco é transferência de arquivo. Três rotas, todas autenticadas com o mesmo
+`RELAY_TOKEN` no header `Authorization: Bearer`:
+
+| Método | Rota |
+|---|---|
+| POST | `/public/backups/{cnpj}/{sellerId}/upload` |
+| GET | `/public/backups/{cnpj}/{sellerId}` |
+| GET | `/public/backups/{cnpj}/{sellerId}/download/{file}` |
+
+O upload é `multipart/form-data` com o arquivo em `backup` e os metadados em campos
+(`file`, `created_at`, `origin`, `documents`, `original_bytes`, `stores`).
+
+**Chega comprimido.** Um export de 6 MB vira menos de 1 MB em gzip, e quem paga a
+diferença é o plano de dados do vendedor. O painel descomprime ao baixar, porque o
+aparelho espera o `.jsonl` de volta.
+
+**Retenção por origem**, como no aparelho: 7 automáticos, 3 manuais, 3 de correção, 2 de
+restauração — por vendedor. Um limite único faria uma sequência de correções apagar os
+diários da semana, justamente as cópias que salvam quando a correção foi a causa.
+
+Os arquivos vão para `storage/backups/{cnpj}/{sellerId}/`, que precisa de volume
+persistente no Jelastic como o resto do `storage/`. Com ~600 KB por cópia e 30 vendedores,
+a retenção acima ocupa algo perto de 180 MB.
+
+> Estes são os únicos endpoints autenticados do servidor. Os demais nasceram sem
+> autenticação nenhuma — problema separado, que continua de pé.
+
+## 8. Operação
 
 ### Requisitos de PHP
 
