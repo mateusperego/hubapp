@@ -11,6 +11,7 @@ use HubApp\Controllers\PushNotificationController;
 use HubApp\Controllers\LetsSignController;
 use HubApp\Controllers\ImageController;
 use HubApp\Controllers\BackupController;
+use HubApp\Controllers\MirrorController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -112,6 +113,25 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         'GET',
         '/public/backups/{cnpj}/{sellerId}/download/{file}',
         [BackupController::class, 'download']
+    );
+
+    /* =======================
+     * QUADROS DE ESPELHAMENTO
+     *
+     * Fora do relay de propósito: uma conexão de painel carrega todos os
+     * vendedores, e o Workerman descarta o próximo pacote quando o buffer
+     * enche. A leitura apaga o quadro — ele é de passagem, não um backup.
+     * ======================= */
+    $r->addRoute(
+        'POST',
+        '/public/mirror/{cnpj}/{sellerId}/{sessionId}/{seq}.png',
+        [MirrorController::class, 'upload']
+    );
+
+    $r->addRoute(
+        'GET',
+        '/public/mirror/{cnpj}/{sellerId}/{sessionId}/{seq}.png',
+        [MirrorController::class, 'download']
     );
 
     /* =======================
