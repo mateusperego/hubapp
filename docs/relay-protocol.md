@@ -217,42 +217,7 @@ a retenção acima ocupa algo perto de 180 MB.
 > Estes são os únicos endpoints autenticados do servidor. Os demais nasceram sem
 > autenticação nenhuma — problema separado, que continua de pé.
 
-## 8. Quadros de espelhamento (HTTP, fora do relay)
-
-O painel pode ver a tela do app do vendedor. O **comando** vai pelo relay
-(`mirror_begin`, `mirror_frame`, …, documentados em `docs/protocol.md` do
-`el_monitor_apps`); os **bytes do PNG** vão por HTTP, aqui.
-
-Não é otimização. A conexão do painel é **uma só para todos os vendedores**, e
-o Workerman descarta o *próximo* pacote quando o buffer de envio de 1 MiB de
-uma conexão enche (`TcpConnection::$maxSendBufferSize`). Um quadro trafegando
-pelo relay arriscaria, em silêncio, a resposta de outro vendedor — ou o `pong`
-que mantém o painel inteiro no ar, e aí todos caem. É a mesma divisão que os
-backups já fazem.
-
-| Método | Rota | Quem chama |
-|---|---|---|
-| `POST` | `/public/mirror/{cnpj}/{sellerId}/{sessionId}/{seq}.png` | o app, com o PNG cru no corpo |
-| `GET` | a mesma rota | o painel |
-
-Autenticados com o `RELAY_TOKEN`, como os backups. O corpo é cru, não
-multipart: é um PNG só, e o boundary custaria banda do plano de dados do
-vendedor a cada captura sem resolver nada.
-
-Três regras que não são detalhe de implementação:
-
-- **A leitura apaga o arquivo.** Um quadro é de passagem, não um backup: é a
-  tela de um vendedor, com dados de clientes dentro, e não tem por que
-  acumular. Um segundo `GET` do mesmo quadro é 404 — o que está certo, porque
-  diz que o laço pediu duas vezes em vez de devolver uma tela velha.
-- **Quadro abandonado expira em 5 minutos**, varrido na gravação seguinte.
-- **Só PNG entra**, conferido pela assinatura do arquivo, com teto de 2 MiB. O
-  que é servido de volta como imagem tem de ser imagem.
-
-`storage/mirror/` merece a mesma atenção de retenção que `storage/backups/`, e
-não deveria ter nada dentro em regime — se tiver, é transferência interrompida.
-
-## 9. Operação
+## 8. Operação
 
 ### Requisitos de PHP
 
