@@ -2,6 +2,7 @@
 
 namespace HubApp\Controllers;
 
+use HubApp\Helpers\EnvHelper;
 use HubApp\Helpers\RequestHelper;
 use HubApp\Helpers\ResponseHelper;
 use HubApp\Services\BackupStorageService;
@@ -78,7 +79,7 @@ class BackupController
     /** Responde 401 e devolve `false` quando o token não confere. */
     private static function authorized(): bool
     {
-        $expected = trim((string) ($_ENV['RELAY_TOKEN'] ?? ''));
+        $expected = (string) EnvHelper::get('RELAY_TOKEN', '');
         $header = (string) RequestHelper::getHeader('Authorization');
         $presented = str_starts_with($header, 'Bearer ')
             ? substr($header, 7)

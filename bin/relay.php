@@ -12,27 +12,25 @@
  * mod_php não sustenta conexão longa. Contrato em docs/relay-protocol.md.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+require __DIR__ . '/../src/bootstrap.php';
 
+use HubApp\Helpers\EnvHelper;
 use HubApp\Relay\Handshake;
 use HubApp\Relay\RelayLog;
 use HubApp\Relay\RelayServer;
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
-$dotenv->load();
-
-$token = trim((string) ($_ENV['RELAY_TOKEN'] ?? ''));
+$token = (string) EnvHelper::get('RELAY_TOKEN', '');
 
 if ($token === '') {
-    fwrite(STDERR, "RELAY_TOKEN não definido no .env. O relay não sobe sem token." . PHP_EOL);
+    fwrite(STDERR, "RELAY_TOKEN não definido no ambiente nem no .env. O relay não sobe sem token." . PHP_EOL);
     exit(1);
 }
 
-$port = (int) ($_ENV['RELAY_PORT'] ?? 8443);
+$port = (int) EnvHelper::get('RELAY_PORT', '8443');
 
 $allowlist = array_values(array_filter(array_map(
     'trim',
-    explode(',', (string) ($_ENV['RELAY_SELLER_ALLOWLIST'] ?? ''))
+    explode(',', (string) EnvHelper::get('RELAY_SELLER_ALLOWLIST', ''))
 )));
 
 // Em daemon o stdout vai para o log do Workerman; escrever nos dois duplicaria.

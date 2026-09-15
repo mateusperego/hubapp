@@ -16,21 +16,43 @@ HubApp is a PHP backend API serving as a multi-purpose hub for business applicat
 ## Project Structure
 
 ```
-agroprodutor/
-├── public/           # Web root (document root should point here)
-│   ├── index.php     # Entry point with basic routing
-│   └── .htaccess     # URL rewriting rules
+.
+├── public/           # Front controller (index.php) + .htaccess de rewrite
+├── bin/
+│   └── relay.php     # Daemon WebSocket de suporte remoto (Workerman), fora do Apache
+├── config/
+│   └── firebase/{CNPJ}/{app}/firebase.php   # Config por cliente; a private key vem do ambiente
 ├── src/
-│   ├── Controllers/  # Request handlers
-│   ├── Services/     # Business logic (DANFE generation)
-│   └── Helpers/      # Utility classes (HTTP responses)
-├── storage/
-│   ├── xml/          # NFe XML files
-│   ├── pdf/          # Generated PDF files
-│   ├── json/         # JSON data files
-│   └── logs/         # Application logs
-└── vendor/           # Composer dependencies
+│   ├── bootstrap.php # Autoload + carregamento das variáveis de ambiente
+│   ├── Auth/         # GoogleOAuth (token para a FCM API)
+│   ├── Controllers/  # Handlers das rotas
+│   ├── Firebase/     # FcmClient
+│   ├── Helpers/      # EnvHelper, RequestHelper, ResponseHelper
+│   ├── Relay/        # Protocolo do relay (docs/relay-protocol.md)
+│   └── Services/     # Regra de negócio (DANFE, imagens, backups, JSON, LetsSign)
+├── storage/          # Runtime: imagens, PDFs, JSON, logs. Não versionado; volume persistente
+├── docs/             # relay-protocol.md
+└── vendor/           # Dependências — versionadas de propósito, o deploy é por git pull
 ```
+
+Atenção ao DocumentRoot: no Jelastic ele aponta para a **raiz do projeto**, não para
+`public/` — por isso as rotas em `public/index.php` carregam o prefixo `/public/`. O
+`.htaccess` da raiz existe justamente para impedir acesso HTTP a `.env`, `config/`,
+`storage/`, `src/`, `bin/` e `vendor/`.
+
+## Configuração e segredos
+
+Nada de segredo no repositório. As variáveis estão listadas em `.env.example`:
+
+- **Local:** copie para `.env` (gitignored).
+- **Produção (web):** nó Apache no Jelastic > `Additionally` > **Variables** > `Apply` +
+  restart do nó.
+- **Produção (relay):** o processo CLI não herda as Variables do nó; ele lê um arquivo
+  `600` fora do webroot, carregado no start — ver `docs/relay-protocol.md`.
+
+Toda leitura passa por `HubApp\Helpers\EnvHelper` (`get`/`required`), que consulta
+`getenv()`, `$_ENV` e `$_SERVER` nessa ordem. Ler `$_ENV` direto não funciona em produção:
+o `variables_order` padrão do PHP (`GPCS`) não popula `$_ENV` com o ambiente do sistema.
 
 ## Common Commands
 

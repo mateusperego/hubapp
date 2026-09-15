@@ -171,7 +171,7 @@ o log de verdade.
 
 ## 6. Autenticação
 
-Token global único em `RELAY_TOKEN` (arquivo `.env`), comparado com `hash_equals` — comparação em
+Token global único em `RELAY_TOKEN` (variável de ambiente), comparado com `hash_equals` — comparação em
 tempo constante, para não vazar o segredo por timing.
 
 > **Limitação conhecida e aceita:** com um token só, quem o tiver pode conectar como
@@ -259,13 +259,33 @@ usual é um `@reboot` no cron do nó ou um serviço systemd.
 Suba a primeira vez em primeiro plano, sem `-d`. O log vai para a tela e um erro de
 extensão ou de porta aparece na hora, em vez de sumir num arquivo.
 
-Variáveis em `.env`:
+Variáveis de ambiente:
 
 ```
 RELAY_TOKEN=<segredo compartilhado pelas duas pontas>
 RELAY_PORT=8443
 RELAY_SELLER_ALLOWLIST=
 ```
+
+Localmente elas ficam no `.env` (não versionado). **Em produção não existe `.env`**: as
+variáveis do site vêm das *Variables* do nó no painel do Jelastic — mas essas só chegam ao
+processo do `httpd`, não à sessão SSH nem ao cron. Como o relay é um processo CLI, ele
+precisa da própria fonte: um arquivo fora do webroot, com permissão `600`, carregado no
+comando de start.
+
+```bash
+# /home/jelastic/hubapp-relay.env  (chmod 600, fora do webroot)
+RELAY_TOKEN=...
+RELAY_PORT=8443
+RELAY_SELLER_ALLOWLIST=
+
+# start (use esta linha também no @reboot do cron ou no ExecStart do systemd)
+set -a; . /home/jelastic/hubapp-relay.env; set +a; \
+  php -d memory_limit=256M /var/www/webroot/ROOT/bin/relay.php start -d
+```
+
+O `RELAY_TOKEN` tem de ser o mesmo valor nos dois lugares — as Variables do nó (usadas pelo
+`BackupController`) e esse arquivo (usado pelo relay).
 
 ### Publicar o `/relay`
 

@@ -1,0 +1,16 @@
+# O DocumentRoot no Jelastic aponta para a raiz do projeto (por isso as rotas em
+# public/index.php levam o prefixo /public/). Sem estas regras, .env, config/,
+# storage/ e o próprio .git/ ficam acessíveis pela web.
+
+# Arquivos ocultos: .env, .env.example, .gitignore, .DS_Store.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Manifestos do Composer.
+<FilesMatch "^composer\.(json|lock)$">
+    Require all denied
+</FilesMatch>
+
+# Diretórios que nunca devem ser servidos diretamente.
+RedirectMatch 404 ^/(\.git|config|storage|bin|src|vendor|docs)(/|$)
