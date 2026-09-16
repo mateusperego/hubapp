@@ -280,7 +280,8 @@ class RelayServer
     {
         foreach ($this->mirrors->idleSessions() as $key => $session) {
             RelayLog::info(
-                "espelhamento {$session['session_id']} sem painéis; pedindo parada"
+                "espelhamento {$session['session_id']} encerrado: "
+                . "{$session['reason']}"
             );
 
             $this->mirrorRouter->tellSourceToStop(

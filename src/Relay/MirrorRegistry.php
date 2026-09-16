@@ -23,8 +23,24 @@ class MirrorRegistry
     public const SINK_ORPHAN_SECONDS = 10.0;
 
     /**
-     * Sessão sem ninguém assistindo sobrevive isso antes de o aparelho ser
-     * mandado parar — o bastante para um painel reconectar.
+     * Quanto tempo uma fonte recém-aberta espera pelo **primeiro** painel.
+     *
+     * Não confunda com [IDLE_SECONDS]. A fonte conecta antes de o painel saber
+     * que a sessão existe: o aparelho só manda `mirror_ready` depois de o
+     * socket de mídia estar no ar, e o painel ainda precisa receber a mensagem,
+     * montar o decodificador e discar. Medir isso com a tolerância de "o último
+     * painel saiu" derruba a transmissão antes de ela começar — foi exatamente
+     * o que aconteceu, e a fonte morria em 4 s.
+     *
+     * Generoso de propósito: o pior caso é o celular codificar alguns segundos
+     * para ninguém, e o melhor caso é o espelhamento funcionar.
+     */
+    public const FIRST_SINK_SECONDS = 15.0;
+
+    /**
+     * Sessão que **já teve** painel e ficou sem ninguém assistindo sobrevive
+     * isso antes de o aparelho ser mandado parar — o bastante para um painel
+     * reconectar.
      */
     public const IDLE_SECONDS = 3.0;
 
@@ -60,7 +76,11 @@ class MirrorRegistry
             'states'      => [],
             'drops'       => [],
             'lastConfig'  => null,
-            'idleSince'   => microtime(true),
+            // Zero é "não está ociosa": a contagem só começa quando o último
+            // painel sai. Até o primeiro chegar, quem manda é `openedAt`.
+            'idleSince'   => 0.0,
+            'openedAt'    => microtime(true),
+            'everHadSink' => false,
             'lastKeyAsk'  => 0.0,
             'forwarded'   => 0,
             'discarded'   => 0,
@@ -94,6 +114,7 @@ class MirrorRegistry
             ];
         }
 
+        $this->sessions[$key]['everHadSink']             = true;
         $this->sessions[$key]['sinks'][$connection->id]  = $connection;
         // `warming`: entrou agora e ainda não tem de onde decodificar.
         $this->sessions[$key]['states'][$connection->id] = 'warming';
@@ -245,13 +266,19 @@ class MirrorRegistry
     }
 
     /**
-     * Sessões sem ninguém assistindo há mais que [IDLE_SECONDS].
+     * Sessões que devem ser encerradas por não ter ninguém assistindo.
      *
-     * Sem isto, um painel fechado à força deixaria o celular codificando e
-     * gastando bateria e a franquia de dados do vendedor indefinidamente — o
-     * pior modo de falha que esta funcionalidade tem.
+     * Duas contagens diferentes, e a distinção é o que faz a transmissão
+     * conseguir começar:
      *
-     * @return array<string, array{seller_id: string, session_id: string}>
+     * - fonte que **nunca** teve painel espera [FIRST_SINK_SECONDS];
+     * - sessão que **já teve** e ficou vazia espera [IDLE_SECONDS].
+     *
+     * Sem encerrar nenhuma das duas, um painel fechado à força deixaria o
+     * celular codificando e gastando bateria e a franquia de dados do vendedor
+     * indefinidamente — o pior modo de falha que esta funcionalidade tem.
+     *
+     * @return array<string, array{seller_id: string, session_id: string, reason: string}>
      */
     public function idleSessions(): array
     {
@@ -259,14 +286,27 @@ class MirrorRegistry
         $idle = [];
 
         foreach ($this->sessions as $key => $session) {
-            if ($session['sinks'] !== [] || $session['idleSince'] <= 0.0) {
+            if ($session['sinks'] !== []) {
                 continue;
             }
 
-            if ($now - $session['idleSince'] > self::IDLE_SECONDS) {
+            if ($session['everHadSink'] !== true) {
+                if ($now - $session['openedAt'] > self::FIRST_SINK_SECONDS) {
+                    $idle[$key] = [
+                        'seller_id'  => $session['seller_id'],
+                        'session_id' => $session['session_id'],
+                        'reason'     => 'nenhum painel chegou',
+                    ];
+                }
+                continue;
+            }
+
+            if ($session['idleSince'] > 0.0
+                && $now - $session['idleSince'] > self::IDLE_SECONDS) {
                 $idle[$key] = [
                     'seller_id'  => $session['seller_id'],
                     'session_id' => $session['session_id'],
+                    'reason'     => 'último painel saiu',
                 ];
             }
         }
