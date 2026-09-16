@@ -14,3 +14,24 @@
 
 # Diretórios que nunca devem ser servidos diretamente.
 RedirectMatch 404 ^/(\.git|config|storage|bin|src|vendor|docs)(/|$)
+
+# Publica o relay de WebSocket no mesmo domínio.
+#
+# O relay escuta em 127.0.0.1:8443 e essa porta **não** está exposta pelo
+# container — só 80 e 443 estão. Sem esta regra, `wss://<domínio>/relay`
+# responde 404 e nem o painel nem o app conseguem chegar ao relay, o que é
+# indistinguível de "o relay está fora do ar".
+#
+# `ProxyPass` não é permitido em .htaccess; a flag [P] do mod_rewrite é o
+# caminho que funciona aqui. Exige mod_proxy e mod_proxy_wstunnel habilitados.
+#
+# A condição do cabeçalho Upgrade é o que mantém isto restrito: sem ela, uma
+# requisição HTTP comum em /relay também seria encaminhada, e o relay não fala
+# HTTP.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^relay/?$ ws://127.0.0.1:8443/ [P,L]
+</IfModule>
