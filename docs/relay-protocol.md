@@ -94,6 +94,9 @@ Sem ele, um `seller_offline` perdido numa queda de rede viraria vendedor fantasm
 | 4001 | token inválido | **não** — pede ação humana |
 | 4003 | `role` desconhecida | **não** |
 | 4009 | `panel_id` já conectado | **não** |
+| 4010 | ticket de espelhamento sem par | **não** — peça um `mirror_start` novo |
+| 4011 | a fonte do espelhamento caiu | **não** |
+| 4012 | limite de painéis nesta transmissão | **não** |
 
 ## 3. Presença (relay → painel)
 
@@ -145,6 +148,108 @@ O `seller_id` que chega ao painel é **sempre** o da sessão autenticada, escrit
 envelope. Qualquer `seller_id` que venha dentro do `payload` do vendedor é ignorado pelo painel.
 Por isso o relay envelopa (`{seller_id, payload}`) em vez de injetar o campo por merge: um merge
 deixaria o vendedor sobrescrever o campo e se passar por outra loja.
+
+## 4.1 Canal de espelhamento (binário)
+
+Mesma porta, mesma URL, mesmo `RELAY_TOKEN`. O que muda é o `role` no `hello`:
+`mirror_source` (o aparelho) e `mirror_sink` (o painel). O primeiro frame é
+**texto** JSON, para reaproveitar o `Envelope::decode`; do segundo em diante a
+conexão é binária nos dois sentidos.
+
+```json
+{"type":"hello","role":"mirror_source","token":"…","seller_id":"V0143~…",
+ "session_id":"s-9f3a1c","ticket":"7c1e…"}
+```
+
+**Mesmo Worker, de propósito.** O `count = 1` existe porque presença e
+pareamento vivem em memória; um socket de mídia num segundo processo não
+enxergaria nem o vendedor nem o painel. Consequência boa: nenhuma porta nova e
+nenhuma mudança no Apache.
+
+O relay pareia por `(seller_id, ticket)`. **O ticket é sorteado pelo aparelho** e
+chega às duas pontas pelo canal de controle, que já é autenticado; o relay não o
+valida contra nada — ele *é* o segredo. Sem ele, qualquer painel com o token
+compartilhado poderia abrir um sink contra qualquer vendedor e receber a tela
+sem o vendedor ter consentido com nada. **Nunca entra em log.**
+
+O contrato do cabeçalho de 16 bytes está em `docs/protocol.md` do
+`el_monitor_apps`. Aqui o relay lê dois campos: a flag de keyframe, que diz onde
+ele pode retomar depois de descartar, e a geração, que vai para o log. Teto de
+frame de **512 KiB**, próprio — o `Envelope::MAX_BYTES` protege um JSON que o
+relay precisa decodificar, e neste caminho ele não decodifica nada.
+
+### A ordem no `onMessage` importa
+
+O caminho de mídia vem **antes** do `Envelope::decode`. Sem isso, um frame de
+vídeo de 100 KB passaria por `json_decode` trinta vezes por segundo, falharia, e
+o teto de tamanho o descartaria em silêncio.
+
+### Backpressure
+
+**Vídeo nunca entra em fila.** Um frame enfileirado será exibido tarde e empurra
+todos os seguintes para ainda mais tarde; a fila nunca se recupera sozinha,
+porque a fonte produz a 30 fps constantes. A única saída é descartar — e
+descartar até um keyframe, porque frame inter não significa nada sem o anterior.
+
+O `send()` do Workerman não resolve isso: quando o buffer enche ele chama
+`onError` e descarta *o frame mais novo*, que pode ser justamente o keyframe que
+repararia a imagem. O pré-cheque com `getSendBufferQueueSize()` é obrigatório.
+
+Por painel, três estados e dois limiares:
+
+| | |
+|---|---|
+| `warming` | entrou agora, ainda não tem de onde decodificar |
+| `flowing` | recebendo |
+| `dropping` | descartando até o próximo keyframe |
+| 128 KiB | acima disso, `flowing` vira `dropping` |
+| 16 KiB | abaixo disso, um keyframe devolve a `flowing` |
+| 256 KiB | `maxSendBufferSize` da conexão — rede de segurança, não a política |
+
+Frames de SPS/PPS passam em **qualquer** estado e nunca contam como descarte:
+são centenas de bytes e sem eles o keyframe seguinte é inútil. O relay guarda o
+último deles e o replica para todo painel que entra, o que torna a entrada de um
+segundo painel independente do canal de controle. Keyframe não é guardado — são
+120 KB por sessão e ele envelhece; melhor pedir um novo.
+
+### A exceção ao "relay burro"
+
+Este é o único ponto do sistema em que o relay **escreve** mensagens de
+aplicação em vez de repassá-las: `mirror_keyframe` e `mirror_stop`. A exceção é
+deliberada e não tem substituto — o relay é a única parte do sistema que enxerga
+o buffer de saída encher. Quando o painel percebe que a imagem está atrasada, o
+dado já está velho há um segundo.
+
+Os pedidos saem pelo canal de **controle** do vendedor, não pelo socket de
+mídia: aquele é binário e de mão única, e inventar um comando reverso nele seria
+criar um segundo protocolo para dizer uma frase. Limitado a um por 500 ms por
+sessão: uma rajada de perda viraria uma rajada de keyframes, que é justamente o
+mais caro num enlace que já está perdendo pacote.
+
+### Ciclo de vida
+
+| Evento | O que o relay faz |
+|---|---|
+| fonte conecta, sem painel | cria a sessão; frames chegam e são descartados sem log |
+| painel conecta, sem fonte | recusa com 4010 |
+| painel conecta com fonte | estado `warming`, replica o SPS/PPS guardado, pede keyframe |
+| segundo painel | fan-out do mesmo frame; teto de 4, depois 4012 |
+| último painel sai | tolera **3 s** (o bastante para reconectar) e manda o aparelho parar com `no_sink` |
+| socket da fonte cai | destrói a sessão, fecha os painéis com 4011, anuncia `source_gone` |
+| canal de **controle** do vendedor cai | derruba junto as sessões dele |
+
+A tolerância de 3 s não é conforto: sem ela, um painel fechado à força deixaria
+o celular codificando e gastando bateria e a franquia de dados do vendedor
+indefinidamente — o pior modo de falha desta funcionalidade.
+
+### Heartbeat
+
+As conexões de espelhamento **não** recebem o `ping` de aplicação: ele chegaria
+como um frame binário de 15 bytes no meio do fluxo H.264 e o painel precisaria
+de um caso especial para ele. Elas também ficam fora do watchdog de silêncio —
+o sink nunca fala e seria ceifado em 90 s, e a saúde dele já é observável pelo
+tamanho do buffer de saída. O `pingInterval` do próprio WebSocket continua
+valendo e é o que segura um proxy ocioso.
 
 ## 5. Heartbeat
 

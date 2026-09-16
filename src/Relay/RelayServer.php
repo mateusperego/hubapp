@@ -3,6 +3,7 @@
 namespace HubApp\Relay;
 
 use Workerman\Connection\TcpConnection;
+use Workerman\Protocols\Websocket;
 use Workerman\Timer;
 use Workerman\Worker;
 
@@ -26,14 +27,22 @@ class RelayServer
     /** Silêncio total por três janelas de ping derruba a conexão. */
     private const SILENCE_TOLERANCE_SECONDS = 90;
 
+    /** Varredura das sessões de espelhamento sem ninguém assistindo. */
+    private const MIRROR_SWEEP_SECONDS = 2;
+
     private Worker $worker;
     private Handshake $handshake;
     private ConnectionRegistry $registry;
+    private MirrorRegistry $mirrors;
+    private MirrorRouter $mirrorRouter;
 
     public function __construct(int $port, Handshake $handshake)
     {
         $this->handshake = $handshake;
         $this->registry  = new ConnectionRegistry();
+        $this->mirrors   = new MirrorRegistry();
+
+        $this->mirrorRouter = new MirrorRouter($this->mirrors, $this->registry);
 
         $this->worker = new Worker("websocket://0.0.0.0:{$port}");
         $this->worker->name = 'hubapp-relay';
@@ -62,6 +71,7 @@ class RelayServer
 
         Timer::add(self::HEARTBEAT_SECONDS, fn() => $this->heartbeat());
         Timer::add(Handshake::DEADLINE_SECONDS, fn() => $this->dropSilentHandshakes());
+        Timer::add(self::MIRROR_SWEEP_SECONDS, fn() => $this->sweepIdleMirrors());
     }
 
     private function onConnect(TcpConnection $connection): void
@@ -72,6 +82,25 @@ class RelayServer
     private function onMessage(TcpConnection $connection, string $frame): void
     {
         $this->registry->recordSignal($connection);
+
+        // O caminho de mídia vem antes do `Envelope::decode`, e a ordem é o
+        // ponto: bytes opacos não podem passar por `json_decode`. Um frame de
+        // vídeo de 100 KB, trinta vezes por segundo, seria decodificado como
+        // JSON, falharia, e o `strlen > MAX_BYTES` o descartaria em silêncio.
+        //
+        // O `hello` do socket de mídia chega antes de o papel existir, então
+        // cai no caminho JSON normal e é autenticado como qualquer outro.
+        $role = $this->registry->roleOf($connection);
+
+        if ($role === Handshake::ROLE_MIRROR_SOURCE) {
+            $this->mirrorRouter->forward($connection, $frame);
+            return;
+        }
+
+        if ($role === Handshake::ROLE_MIRROR_SINK) {
+            // O painel não fala por este socket. Descarta e segue.
+            return;
+        }
 
         $message = Envelope::decode($frame);
 
@@ -115,6 +144,16 @@ class RelayServer
 
         if ($verdict['role'] === Handshake::ROLE_PANEL) {
             $this->admitPanel($connection, $verdict['identity']['panel_id']);
+            return;
+        }
+
+        if ($verdict['role'] === Handshake::ROLE_MIRROR_SOURCE) {
+            $this->admitMirrorSource($connection, $verdict['identity']);
+            return;
+        }
+
+        if ($verdict['role'] === Handshake::ROLE_MIRROR_SINK) {
+            $this->admitMirrorSink($connection, $verdict['identity']);
             return;
         }
 
@@ -168,6 +207,114 @@ class RelayServer
         ]);
 
         RelayLog::info("vendedor {$sellerId} conectado ({$identity['device']})");
+    }
+
+    private function admitMirrorSource(TcpConnection $connection, array $identity): void
+    {
+        $this->registry->recordMirror(
+            $connection,
+            Handshake::ROLE_MIRROR_SOURCE,
+            $identity['session_id']
+        );
+
+        $this->tuneMirrorConnection($connection);
+        $this->mirrors->openSource($connection, $identity);
+
+        RelayLog::info(
+            "espelhamento {$identity['session_id']} aberto por {$identity['seller_id']}"
+        );
+    }
+
+    private function admitMirrorSink(TcpConnection $connection, array $identity): void
+    {
+        $verdict = $this->mirrors->attachSink($connection, $identity);
+
+        if ($verdict['ok'] !== true) {
+            RelayLog::warning(
+                "painel recusado no espelhamento {$identity['session_id']}: {$verdict['reason']}"
+            );
+            $connection->close(Envelope::encode([
+                'type'  => 'error',
+                'error' => $verdict['reason'],
+                'code'  => $verdict['code'],
+            ]));
+            return;
+        }
+
+        $this->registry->recordMirror(
+            $connection,
+            Handshake::ROLE_MIRROR_SINK,
+            $identity['session_id']
+        );
+
+        $this->tuneMirrorConnection($connection);
+        $this->mirrorRouter->warmUp($verdict['key'], $connection);
+
+        RelayLog::info("painel entrou no espelhamento {$identity['session_id']}");
+    }
+
+    /**
+     * Limites próprios das conexões de mídia.
+     *
+     * `maxSendBufferSize` é por conexão, então baixá-lo aqui não encosta em
+     * painel nem em vendedor no canal de controle. 256 KiB são uns dois
+     * keyframes, ou meio segundo de vídeo em voo — acima disso a imagem já está
+     * velha demais para valer a pena entregar.
+     */
+    private function tuneMirrorConnection(TcpConnection $connection): void
+    {
+        $connection->websocketType     = Websocket::BINARY_TYPE_ARRAYBUFFER;
+        $connection->maxSendBufferSize = 262144;
+        $connection->maxPackageSize    = MirrorFrame::MAX_BYTES;
+    }
+
+    /**
+     * Fecha as sessões de espelhamento que ficaram sem ninguém assistindo.
+     *
+     * Sem isto, um painel fechado à força deixaria o celular codificando e
+     * gastando bateria e a franquia de dados do vendedor indefinidamente — o
+     * pior modo de falha que esta funcionalidade tem. A tolerância existe para
+     * o painel conseguir reconectar sem derrubar a sessão.
+     */
+    private function sweepIdleMirrors(): void
+    {
+        foreach ($this->mirrors->idleSessions() as $key => $session) {
+            RelayLog::info(
+                "espelhamento {$session['session_id']} sem painéis; pedindo parada"
+            );
+
+            $this->mirrorRouter->tellSourceToStop(
+                $session['seller_id'],
+                $session['session_id'],
+                'no_sink'
+            );
+
+            $this->closeMirrorSession($key, 'no_sink');
+        }
+    }
+
+    private function closeMirrorSession(string $key, string $reason): void
+    {
+        $closed = $this->mirrors->closeSession($key);
+
+        if ($closed === null) {
+            return;
+        }
+
+        foreach ($closed['sinks'] as $sink) {
+            $this->registry->forget($sink);
+            $sink->close(Envelope::encode([
+                'type'  => 'error',
+                'error' => 'Transmissão encerrada.',
+                'code'  => Handshake::CLOSE_MIRROR_SOURCE_GONE,
+            ]));
+        }
+
+        $this->mirrorRouter->announceStop(
+            $closed['seller_id'],
+            $closed['session_id'],
+            $reason
+        );
     }
 
     private function fromPanel(TcpConnection $connection, array $message): void
@@ -256,6 +403,13 @@ class RelayServer
         $this->registry->forget($connection);
 
         if ($role === Handshake::ROLE_SELLER && $name !== null) {
+            // Espelhamento não sobrevive ao canal de controle do dono. Se a
+            // sessão continuasse, o painel ficaria recebendo imagem de um
+            // vendedor que a lista de conectados já mostra como offline.
+            foreach ($this->mirrors->keysOfSeller($name) as $key) {
+                $this->closeMirrorSession($key, 'source_gone');
+            }
+
             // Só anuncia se a conexão que caiu ainda era a registrada: numa
             // reconexão, a antiga fecha depois da nova entrar.
             if ($this->registry->seller($name) === null) {
@@ -271,6 +425,21 @@ class RelayServer
 
         if ($role === Handshake::ROLE_PANEL && $name !== null) {
             RelayLog::info("painel {$name} desconectou");
+        }
+
+        if ($role === Handshake::ROLE_MIRROR_SINK) {
+            // Sai da sessão; o timer de ociosidade decide se ela acaba. Sair e
+            // encerrar na hora tiraria do painel a chance de reconectar.
+            $this->mirrors->detachSink($connection);
+        }
+
+        if ($role === Handshake::ROLE_MIRROR_SOURCE) {
+            $key = $this->mirrors->sessionKeyOf($connection);
+
+            if ($key !== null) {
+                RelayLog::info("fonte do espelhamento {$name} caiu");
+                $this->closeMirrorSession($key, 'source_gone');
+            }
         }
     }
 

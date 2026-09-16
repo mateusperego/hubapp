@@ -104,6 +104,23 @@ class ConnectionRegistry
         return true;
     }
 
+    /**
+     * Registra uma ponta do canal de espelhamento.
+     *
+     * Não entra em `sellers` nem em `panels`: presença é o que o painel mostra
+     * na lista de conectados, e um espelhamento que cai não pode tirar ninguém
+     * de lá. O pareamento fica no `MirrorRegistry`, em paralelo.
+     *
+     * Efeito colateral desejado: como estas conexões não estão naqueles mapas,
+     * o `connectionById` não as encontra e o watchdog de silêncio não as ceifa.
+     * O sink nunca fala — seria derrubado em 90 s — e a saúde dele já é
+     * observável pelo tamanho do buffer de saída.
+     */
+    public function recordMirror(TcpConnection $connection, string $role, string $name): void
+    {
+        $this->promote($connection, $role, $name);
+    }
+
     private function promote(TcpConnection $connection, string $role, string $name): void
     {
         unset($this->pending[$connection->id], $this->pendingSince[$connection->id]);
