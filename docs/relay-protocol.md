@@ -98,6 +98,13 @@ Sem ele, um `seller_offline` perdido numa queda de rede viraria vendedor fantasm
 | 4011 | a fonte do espelhamento caiu | **não** |
 | 4012 | limite de painéis nesta transmissão | **não** |
 
+> **O número 40xx não viaja no close frame.** O relay manda um frame de **texto**
+> `{"type":"error","error":"…","code":4011}` e fecha em seguida; o Workerman fecha com
+> 1000/1006, então é no *payload* que está a informação, não no `closeCode`. Quem quiser
+> decidir "tentar de novo ou não" de forma programática tem de ler o campo `code` dessa
+> mensagem — o painel hoje lê só o texto e descarta o `code`, o que basta para explicar ao
+> operador e não basta para um retry automático.
+
 ## 3. Presença (relay → painel)
 
 ```json
@@ -173,10 +180,33 @@ compartilhado poderia abrir um sink contra qualquer vendedor e receber a tela
 sem o vendedor ter consentido com nada. **Nunca entra em log.**
 
 O contrato do cabeçalho de 16 bytes está em `docs/protocol.md` do
-`el_monitor_apps`. Aqui o relay lê dois campos: a flag de keyframe, que diz onde
-ele pode retomar depois de descartar, e a geração, que vai para o log. Teto de
-frame de **512 KiB**, próprio — o `Envelope::MAX_BYTES` protege um JSON que o
-relay precisa decodificar, e neste caminho ele não decodifica nada.
+`el_monitor_apps`. Teto de frame de **512 KiB**, próprio — o `Envelope::MAX_BYTES`
+protege um JSON que o relay precisa decodificar, e neste caminho ele não
+decodifica nada.
+
+O relay lê o cabeçalho inteiro, e cada campo paga o seu lugar:
+
+| Campo | Para quê |
+|---|---|
+| `flags` bit0, keyframe | onde ele pode retomar depois de descartar |
+| `flags` bit1, parameter sets | o que ele guarda e replica para quem entra |
+| `flags` bit2, **descartável** | o que ele pode perder sozinho, sem congelar o resto |
+| `generation` | encoder reconfigurado: a sequência recomeça daqui |
+| `sequence` | salto = perda que aconteceu **antes** do relay, no uplink do vendedor |
+| `ms desde o início` | a cadência real de produção, medida num relógio só |
+
+**O bit2 é o que torna o descarte suave.** Um frame que ninguém referencia
+(camada temporal alta, `nal_ref_idc == 0`) sai do fluxo sem estragar os
+seguintes: o painel perde aquele quadro e continua decodificando. Sem ele, todo
+descarte é um congelamento até o próximo IDR — e o `KEY_I_FRAME_INTERVAL` do
+aparelho é de 2 s. Quem marca é o aparelho, porque só ele conhece a estrutura
+que o encoder montou; enquanto ele não marcar nada o bit nunca chega e o relay
+trata todo frame como referência, exatamente como antes.
+
+A distinção entre `sequence` e fila de saída é o que separa dois problemas que
+até aqui eram o mesmo no log: **salto de sequência** é a rede do vendedor
+perdendo pacote antes de chegar aqui; **fila de saída crescendo** é o painel não
+dando conta. Os remédios são opostos.
 
 ### A ordem no `onMessage` importa
 
@@ -195,16 +225,34 @@ O `send()` do Workerman não resolve isso: quando o buffer enche ele chama
 `onError` e descarta *o frame mais novo*, que pode ser justamente o keyframe que
 repararia a imagem. O pré-cheque com `getSendBufferQueueSize()` é obrigatório.
 
-Por painel, três estados e dois limiares:
+**E o pré-cheque soma o tamanho do frame antes de decidir.** Comparar só o que
+já está na fila com a marca alta não protege nada: com 128 KiB na fila o relay
+liberava um frame de até 512 KiB, o buffer ia a 640 KiB, e daí em diante era o
+*Workerman* que escolhia o que descartar — sempre o frame mais novo, com sorte o
+keyframe, e um `onError` por frame por cima. Era exatamente a falha que o
+pré-cheque existe para evitar, escondida dentro dele.
+
+Por painel, três estados e os limiares:
 
 | | |
 |---|---|
 | `warming` | entrou agora, ainda não tem de onde decodificar |
 | `flowing` | recebendo |
 | `dropping` | descartando até o próximo keyframe |
-| 128 KiB | acima disso, `flowing` vira `dropping` |
+| 128 KiB | fila **mais o frame** acima disso, `flowing` vira `dropping` |
 | 16 KiB | abaixo disso, um keyframe devolve a `flowing` |
-| 256 KiB | `maxSendBufferSize` da conexão — rede de segurança, não a política |
+| 768 KiB | `maxSendBufferSize` da conexão — rede de segurança, não a política |
+
+O teto da conexão tem de ficar **acima** do pior caso que a política permite: a
+fila na marca alta (128 KiB) mais um frame inteiro (512 KiB). Em 256 KiB ele
+disparava antes da política, o que é o mesmo que não ter política.
+
+Um painel em `dropping` pede keyframe em duas situações, e a segunda é a que
+importa: no primeiro descarte, e **sempre que a fila dele já drenou** e ele
+continua sem ponto de retomada. Sem a segunda, só o primeiro descarte pedia —
+então um painel que drenasse depois disso ficava preso em `dropping` para
+sempre, esperando que outro pedisse por ele. O limite de um pedido por 500 ms
+por sessão é o que impede que "pedir sempre que drenou" vire uma rajada de IDR.
 
 Frames de SPS/PPS passam em **qualquer** estado e nunca contam como descarte:
 são centenas de bytes e sem eles o keyframe seguinte é inútil. O relay guarda o
@@ -215,16 +263,43 @@ segundo painel independente do canal de controle. Keyframe não é guardado — 
 ### A exceção ao "relay burro"
 
 Este é o único ponto do sistema em que o relay **escreve** mensagens de
-aplicação em vez de repassá-las: `mirror_keyframe` e `mirror_stop`. A exceção é
-deliberada e não tem substituto — o relay é a única parte do sistema que enxerga
-o buffer de saída encher. Quando o painel percebe que a imagem está atrasada, o
-dado já está velho há um segundo.
+aplicação em vez de repassá-las: `mirror_keyframe`, `mirror_tune` e
+`mirror_stop`. A exceção é deliberada e não tem substituto — o relay é a única
+parte do sistema que enxerga o buffer de saída encher. Quando o painel percebe
+que a imagem está atrasada, o dado já está velho há um segundo.
 
 Os pedidos saem pelo canal de **controle** do vendedor, não pelo socket de
 mídia: aquele é binário e de mão única, e inventar um comando reverso nele seria
 criar um segundo protocolo para dizer uma frase. Limitado a um por 500 ms por
 sessão: uma rajada de perda viraria uma rajada de keyframes, que é justamente o
 mais caro num enlace que já está perdendo pacote.
+
+**Qual dos dois verbos depende de quem está segurando o fluxo**, e é uma
+distinção que custa caro errar:
+
+- **um painel entre vários atolado** → é aquele painel. Descarta até o keyframe
+  e pede um IDR.
+- **todos os painéis atolados** → não é painel nenhum, é a taxa que a fonte está
+  produzindo para o enlace que existe. Aqui pedir um IDR é pedir ~120 KB a mais
+  no uplink do celular que já não dá conta: o remédio piora a doença. O que sai
+  é `mirror_tune` com um bitrate menor.
+
+```json
+{"type":"mirror_tune","session_id":"s-9f3a1c","bitrate":1800000}
+```
+
+O bitrate sai de **70% da taxa que o relay mediu chegando**, com piso de
+800 kbps (o mesmo que o aparelho respeita). Medido, e não perguntado: o relay
+recebe cada frame, então é a ponta que sabe disso com mais precisão — e assim
+ele não precisa interpretar nenhuma mensagem de aplicação para descobrir o que o
+aparelho está usando. Como o aparelho obedece e a medição cai junto, os pedidos
+seguintes descem em cascata; na prática a convergência de 24 Mbps até o piso
+leva cerca de nove degraus, uns cinco segundos.
+
+> **O efeito é real mas não é permanente.** O aparelho aplica o `tune` no
+> encoder sem atualizar o `BitrateGovernor`, então o `recover()` dele desfaz o
+> valor depois de 10 s sem reclamação. Consolidar isso é uma linha no
+> `adm_vendas`, fora do escopo deste repositório.
 
 ### Ciclo de vida
 
@@ -236,11 +311,29 @@ mais caro num enlace que já está perdendo pacote.
 | segundo painel | fan-out do mesmo frame; teto de 4, depois 4012 |
 | último painel sai | tolera **3 s** (o bastante para reconectar) e manda o aparelho parar com `no_sink` |
 | socket da fonte cai | destrói a sessão, fecha os painéis com 4011, anuncia `source_gone` |
+| **fonte reconecta com o mesmo ticket** | mantém os painéis, volta todos para `warming`, fecha a conexão anterior e pede keyframe |
+| **fonte para de entregar imagem** | 8 s de silêncio encerram a sessão: `mirror_stop` ao aparelho, 4011 aos painéis |
 | canal de **controle** do vendedor cai | derruba junto as sessões dele |
 
 A tolerância de 3 s não é conforto: sem ela, um painel fechado à força deixaria
 o celular codificando e gastando bateria e a franquia de dados do vendedor
 indefinidamente — o pior modo de falha desta funcionalidade.
+
+**A reabertura com o mesmo ticket mantém os painéis de propósito.** Sobrescrever
+a sessão tirava os painéis de `sinks` sem tirá-los do mapa de conexões: eles
+paravam de receber frame, não eram fechados por ninguém, e ficavam abertos com a
+imagem congelada indefinidamente. Quem sai agora é a conexão de fonte antiga — e
+ela é desregistrada **antes** de ser fechada, senão o `onClose` dela encerraria a
+sessão que acabou de nascer.
+
+**Os 8 s de silêncio da fonte são o único jeito de descobrir um socket de mídia
+meio-aberto** — um celular que perde a rede sem FIN. Essas conexões não têm ping
+nem watchdog de silêncio, e uma sessão com painéis nunca é considerada ociosa,
+então nada a recolhia: o operador ficava olhando um quadro congelado e nenhuma
+das duas pontas emitia erro (o painel também não tem timeout de "sem frame").
+Oito segundos é seguro porque a fonte **não** para em tela parada: o encoder usa
+`KEY_REPEAT_PREVIOUS_FRAME_AFTER` de 100 ms, então uma tela imóvel ainda rende
+uns 10 quadros por segundo. Silêncio total não é tela quieta, é fonte morta.
 
 ### Heartbeat
 
@@ -248,8 +341,16 @@ As conexões de espelhamento **não** recebem o `ping` de aplicação: ele chega
 como um frame binário de 15 bytes no meio do fluxo H.264 e o painel precisaria
 de um caso especial para ele. Elas também ficam fora do watchdog de silêncio —
 o sink nunca fala e seria ceifado em 90 s, e a saúde dele já é observável pelo
-tamanho do buffer de saída. O `pingInterval` do próprio WebSocket continua
-valendo e é o que segura um proxy ocioso.
+tamanho do buffer de saída.
+
+> **Correção de uma afirmação que estava aqui e era falsa.** Dizia-se que "o
+> `pingInterval` do próprio WebSocket continua valendo e é o que segura um proxy
+> ocioso". Não existe: o `Protocols/Websocket.php` do Workerman 4 apenas
+> **responde** ping (opcode 0x9) e nunca emite um por conta própria —
+> `pingInterval` é do Workerman 5. Essas conexões não têm keepalive nenhum do
+> lado do servidor. Na direção do painel isso não pesa enquanto há vídeo
+> fluindo, que é sempre; o que ficava descoberto era a fonte, e é isso que os
+> 8 s de silêncio da seção anterior passaram a cobrir.
 
 ## 5. Heartbeat
 
@@ -332,9 +433,17 @@ PHP coisas que uma página web não pede:
 | Item | Por quê | Como conferir |
 |---|---|---|
 | `pcntl` e `posix` | O Workerman não sobe sem as duas | `php -m \| grep -E 'pcntl\|posix'` |
+| `sockets` | Sem ela o Workerman **não** desliga o Nagle nem liga o SO_KEEPALIVE | `php -m \| grep sockets` |
 | `disable_functions` vazio | `pcntl_fork`, `pcntl_signal` e `posix_kill` precisam estar liberados | `php -i \| grep disable_functions` |
 | `$argv` disponível | É como `start`/`stop`/`status` chegam ao script | `php -r 'var_dump($argv);' start` |
 | `memory_limit` ≥ 256M | O processo não recicla entre requisições, como o Apache faz | `php -d memory_limit=256M …` no start |
+
+> **`sockets` é silenciosa quando falta, e é por isso que ela está nesta tabela.** O
+> Workerman só aplica `TCP_NODELAY` e `SO_KEEPALIVE` dentro de um
+> `if (function_exists('socket_import_stream'))`, e com um `set_error_handler` vazio em
+> volta (`Worker.php`, `resumeAccept`). Sem a extensão nada disso acontece e nada é
+> registrado: o Nagle fica ligado e cada frame pode ganhar até um RTT a mais no último
+> segmento, que é jitter puro num orçamento de 33 ms. Confira em produção — não assuma.
 
 No ambiente Jelastic atual (setembro de 2026) as três primeiras já vêm assim no `php.ini`
 padrão — `extension=pcntl.so` e `extension=posix.so` descomentadas, `disable_functions`
@@ -369,8 +478,15 @@ Variáveis de ambiente:
 ```
 RELAY_TOKEN=<segredo compartilhado pelas duas pontas>
 RELAY_PORT=8443
+RELAY_BIND=127.0.0.1
 RELAY_SELLER_ALLOWLIST=
 ```
+
+`RELAY_BIND` é a interface de escuta, e o padrão só aceita conexão do próprio nó —
+que é o suficiente, porque quem fala com o relay é o proxy do Apache. Antes ele
+escutava em `0.0.0.0` e a porta ficava protegida apenas por a plataforma não a
+expor, o que é configuração de outra pessoa e não uma garantia deste processo. Só
+mude se o relay passar a rodar num nó diferente do Apache.
 
 Localmente elas ficam no `.env` (não versionado). **Em produção não existe `.env`**: as
 variáveis do site vêm das *Variables* do nó no painel do Jelastic — mas essas só chegam ao
@@ -382,6 +498,7 @@ comando de start.
 # /home/jelastic/hubapp-relay.env  (chmod 600, fora do webroot)
 RELAY_TOKEN=...
 RELAY_PORT=8443
+RELAY_BIND=127.0.0.1
 RELAY_SELLER_ALLOWLIST=
 
 # start (use esta linha também no @reboot do cron ou no ExecStart do systemd)
@@ -432,4 +549,41 @@ RewriteRule ^relay$ ws://127.0.0.1:8443/ [P,L]
 3. **Confirme que `storage/` está em volume persistente.** Já valia para os PDFs e as
    imagens; o log do relay só acrescenta. Sem volume, tudo se perde a cada redeploy.
 
-Log em `storage/logs/relay_{Y-m-d}.log`, no mesmo padrão dos logs de DANFE e imagem.
+Log em `storage/logs/relay_{Y-m-d}.log`, no mesmo padrão dos logs de DANFE e imagem. O
+descritor fica **aberto** entre as linhas: este log é escrito de dentro do event loop,
+inclusive no caminho de mídia, e abrir/procurar o fim/fechar o arquivo a cada linha é I/O
+bloqueante no meio do repasse de vídeo — aparece como jitter de FPS justamente quando há
+congestionamento e o log tem mais a dizer.
+
+### O que o log diz sobre a saúde do espelhamento
+
+A cada 10 s, uma linha por sessão ativa:
+
+```
+espelhamento s-9f3a1c: 26.4 fps, 771 kbps, 1 painéis, 234 repassados,
+  0 descartados, 5 perdidos antes do relay, pico de fila 0 B
+```
+
+E uma no fechamento, com o acumulado da sessão inteira.
+
+**Estes números são medidos aqui, e não são os mesmos do `mirror_stats`** que o aparelho
+manda ao painel — aquele é o que o encoder *pretendia* produzir. Quando os dois divergem,
+a diferença é exatamente o problema que se está procurando. Vale lembrar que o painel
+exibe na barra o fps do celular, não o dele: se o celular codifica 30 e o painel só
+desenha 12, a barra mostra 30 e o gargalo fica invisível. Esta linha de log é hoje a única
+medição independente das duas pontas.
+
+Como ler cada campo:
+
+| Campo | O que significa quando piora |
+|---|---|
+| `fps`/`kbps` | o que a fonte está de fato entregando ao relay |
+| `repassados` vs `descartados` | quanto da imagem está morrendo na política de backpressure |
+| `perdidos antes do relay` | salto de sequência: a rede do **vendedor** está perdendo pacote |
+| `pico de fila` | o quanto o painel mais lento ficou para trás na janela |
+| `sem painel` | frames que a fonte mandou para ninguém — franquia do vendedor indo embora |
+
+A distinção entre `perdidos antes do relay` e `pico de fila` é o ponto: a primeira é
+problema de uplink do celular e se resolve com menos bitrate; a segunda é problema do
+painel e se resolve com descarte e keyframe. Antes as duas apareciam como "a imagem está
+ruim".

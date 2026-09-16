@@ -30,13 +30,29 @@ class RelayServer
     /** Varredura das sessões de espelhamento sem ninguém assistindo. */
     private const MIRROR_SWEEP_SECONDS = 2;
 
+    /**
+     * Relatório do que passou em cada espelhamento.
+     *
+     * Os contadores existiam desde o primeiro dia e ninguém os lia. Sem esta
+     * linha no log, nenhum ajuste de FPS ou de qualidade pode ser defendido com
+     * número: as duas pontas só sabem relatar o que *pretendiam* fazer, e o
+     * relay é o único ponto do caminho que vê o que de fato passou.
+     */
+    private const MIRROR_REPORT_SECONDS = 10;
+
+    /** Uma linha de erro por conexão por essa janela. */
+    private const ERROR_WINDOW_SECONDS = 5.0;
+
+    /** @var array<int, float> id da conexão => último erro registrado */
+    private array $errorWindow = [];
+
     private Worker $worker;
     private Handshake $handshake;
     private ConnectionRegistry $registry;
     private MirrorRegistry $mirrors;
     private MirrorRouter $mirrorRouter;
 
-    public function __construct(int $port, Handshake $handshake)
+    public function __construct(int $port, Handshake $handshake, string $bind = '127.0.0.1')
     {
         $this->handshake = $handshake;
         $this->registry  = new ConnectionRegistry();
@@ -44,7 +60,7 @@ class RelayServer
 
         $this->mirrorRouter = new MirrorRouter($this->mirrors, $this->registry);
 
-        $this->worker = new Worker("websocket://0.0.0.0:{$port}");
+        $this->worker = new Worker("websocket://{$bind}:{$port}");
         $this->worker->name = 'hubapp-relay';
 
         // Um processo só: todo o estado de presença e o mapa req_id => painel
@@ -57,7 +73,7 @@ class RelayServer
         $this->worker->onMessage     = fn(TcpConnection $c, $frame) => $this->onMessage($c, (string) $frame);
         $this->worker->onClose       = fn(TcpConnection $c) => $this->onClose($c);
         $this->worker->onError       = fn(TcpConnection $c, $code, $message) =>
-            RelayLog::error("conexão {$c->id} com erro {$code}: {$message}");
+            $this->onConnectionError($c, (int) $code, (string) $message);
     }
 
     public function run(): void
@@ -72,10 +88,18 @@ class RelayServer
         Timer::add(self::HEARTBEAT_SECONDS, fn() => $this->heartbeat());
         Timer::add(Handshake::DEADLINE_SECONDS, fn() => $this->dropSilentHandshakes());
         Timer::add(self::MIRROR_SWEEP_SECONDS, fn() => $this->sweepIdleMirrors());
+        Timer::add(self::MIRROR_REPORT_SECONDS, fn() => $this->reportMirrors());
     }
 
     private function onConnect(TcpConnection $connection): void
     {
+        // O teto do Workerman é de 10 MiB, mas nada neste protocolo passa de
+        // `Envelope::MAX_BYTES`. Sem alinhar os dois, um frame de 9 MiB é
+        // recebido inteiro na memória do processo só para ser descartado pelo
+        // `Envelope::decode` depois. As conexões de mídia baixam isto de novo
+        // em `tuneMirrorConnection`, quando o papel já é conhecido.
+        $connection->maxPackageSize = Envelope::MAX_BYTES;
+
         $this->registry->hold($connection);
     }
 
@@ -220,6 +244,20 @@ class RelayServer
         $this->tuneMirrorConnection($connection);
         $opened = $this->mirrors->openSource($connection, $identity);
 
+        // A fonte reconectou apresentando o mesmo ticket. A sessão foi mantida
+        // com os painéis que já estavam dentro; o que sai é a conexão velha.
+        // O `forget` vem antes do `close` porque sem ele o `onClose` dela
+        // entraria no caminho de fonte e encerraria a sessão que acabou de
+        // nascer.
+        if ($opened['previousSource'] !== null) {
+            RelayLog::info(
+                "espelhamento {$identity['session_id']}: fonte reconectou; "
+                . 'conexão anterior encerrada'
+            );
+            $this->registry->forget($opened['previousSource']);
+            $opened['previousSource']->close();
+        }
+
         RelayLog::info(
             "espelhamento {$identity['session_id']} aberto por {$identity['seller_id']}"
         );
@@ -229,6 +267,16 @@ class RelayServer
             $this->mirrorRouter->warmUp($opened['key'], $sink);
             RelayLog::info(
                 "painel que esperava entrou no espelhamento {$identity['session_id']}"
+            );
+        }
+
+        // Painéis que já estavam assistindo a fonte anterior. Encoder novo,
+        // parameter sets novos: eles voltaram para `warming` e precisam de um
+        // ponto de retomada, igual a quem acabou de chegar.
+        foreach ($opened['retained'] as $sink) {
+            $this->mirrorRouter->warmUp($opened['key'], $sink);
+            RelayLog::info(
+                "painel mantido no espelhamento {$identity['session_id']} após a fonte reconectar"
             );
         }
     }
@@ -292,15 +340,22 @@ class RelayServer
     /**
      * Limites próprios das conexões de mídia.
      *
-     * `maxSendBufferSize` é por conexão, então baixá-lo aqui não encosta em
-     * painel nem em vendedor no canal de controle. 256 KiB são uns dois
-     * keyframes, ou meio segundo de vídeo em voo — acima disso a imagem já está
-     * velha demais para valer a pena entregar.
+     * `maxSendBufferSize` é por conexão, então mexer nele aqui não encosta em
+     * painel nem em vendedor no canal de controle.
+     *
+     * Quem decide o que é entregue é a política do `MirrorRouter` — 128 KiB de
+     * marca-d'água alta. Este teto é só a rede de segurança, e por isso tem de
+     * ficar **acima** do pior caso que a política permite: a fila no limite
+     * (128 KiB) mais um frame inteiro (512 KiB). Em 256 KiB ele disparava
+     * antes da política, e aí quem escolhia o que descartar era o Workerman —
+     * que descarta *o frame mais novo*, ou seja, com sorte o keyframe que
+     * repararia a imagem, e ainda chamava `onError` a cada frame. Era
+     * exatamente a falha que o pré-cheque existe para evitar.
      */
     private function tuneMirrorConnection(TcpConnection $connection): void
     {
         $connection->websocketType     = Websocket::BINARY_TYPE_ARRAYBUFFER;
-        $connection->maxSendBufferSize = 262144;
+        $connection->maxSendBufferSize = 786432; // 768 KiB
         $connection->maxPackageSize    = MirrorFrame::MAX_BYTES;
     }
 
@@ -325,6 +380,25 @@ class RelayServer
             );
         }
 
+        // Fonte que parou de entregar imagem. Sem isto a sessão vivia para
+        // sempre: ela tem painéis, então nunca é considerada ociosa, e nenhuma
+        // das duas pontas tem timeout de "sem frame" — o operador ficava com um
+        // quadro congelado na tela e nenhum erro em lugar nenhum.
+        foreach ($this->mirrors->staleSources() as $key => $session) {
+            RelayLog::warning(
+                "espelhamento {$session['session_id']} encerrado: a fonte não "
+                . 'entrega imagem há ' . (int) round($session['silent']) . 's'
+            );
+
+            $this->mirrorRouter->tellSourceToStop(
+                $session['seller_id'],
+                $session['session_id'],
+                'error'
+            );
+
+            $this->closeMirrorSession($key, 'source_gone');
+        }
+
         foreach ($this->mirrors->idleSessions() as $key => $session) {
             RelayLog::info(
                 "espelhamento {$session['session_id']} encerrado: "
@@ -343,7 +417,28 @@ class RelayServer
 
     private function closeMirrorSession(string $key, string $reason): void
     {
-        $closed = $this->mirrors->closeSession($key);
+        // Lido antes de fechar: depois do `closeSession` a sessão não existe
+        // mais e com ela vai embora a única medição independente das duas
+        // pontas sobre o que esta transmissão realmente fez.
+        $summary = $this->mirrors->lifetimeStats($key);
+        $closed  = $this->mirrors->closeSession($key);
+
+        $this->mirrorRouter->forgetWarnWindow($key);
+
+        if ($summary !== null) {
+            RelayLog::info(sprintf(
+                'espelhamento %s: %ds, %d frames (%d KiB), %d repassados, '
+                . '%d descartados, %d perdidos antes do relay, %d sem painel',
+                $summary['session_id'],
+                (int) $summary['lived'],
+                $summary['frames_in'],
+                $summary['kib_in'],
+                $summary['forwarded'],
+                $summary['discarded'],
+                $summary['gaps'],
+                $summary['no_sink']
+            ));
+        }
 
         if ($closed === null) {
             return;
@@ -362,6 +457,45 @@ class RelayServer
             $closed['session_id'],
             $reason
         );
+    }
+
+    /**
+     * Uma linha por espelhamento ativo, com o que passou na última janela.
+     *
+     * `fps` e `kbps` são medidos **aqui**, do que chegou de verdade, e não são a
+     * mesma coisa que o `mirror_stats` que o aparelho manda ao painel: aquele é
+     * o que o encoder pretendia produzir. Quando os dois números divergem, a
+     * diferença é justamente o problema que se está procurando.
+     *
+     * `perdidos` vem do salto de sequência no cabeçalho, ou seja, é perda que
+     * aconteceu **antes** do relay — no uplink do vendedor. É o que separa "a
+     * rede do celular está ruim" de "o painel não dá conta", que até agora eram
+     * indistinguíveis no log.
+     */
+    private function reportMirrors(): void
+    {
+        foreach ($this->mirrors->activeKeys() as $key) {
+            $stats = $this->mirrors->drainStats($key);
+
+            // Sessão parada não merece uma linha a cada dez segundos; se ela
+            // parou de verdade, quem fala é o watchdog de fonte morta.
+            if ($stats === null || $stats['fps_in'] <= 0.0) {
+                continue;
+            }
+
+            RelayLog::info(sprintf(
+                'espelhamento %s: %s fps, %d kbps, %d painéis, %d repassados, '
+                . '%d descartados, %d perdidos antes do relay, pico de fila %d B',
+                $stats['session_id'],
+                $stats['fps_in'],
+                $stats['kbps_in'],
+                $stats['sinks'],
+                $stats['forwarded'],
+                $stats['discarded'],
+                $stats['gaps'],
+                $stats['peak_queue']
+            ));
+        }
     }
 
     private function fromPanel(TcpConnection $connection, array $message): void
@@ -447,6 +581,8 @@ class RelayServer
         $role = $this->registry->roleOf($connection);
         $name = $this->registry->nameOf($connection);
 
+        unset($this->errorWindow[$connection->id]);
+
         $this->registry->forget($connection);
 
         if ($role === Handshake::ROLE_SELLER && $name !== null) {
@@ -514,6 +650,30 @@ class RelayServer
         foreach ($this->registry->sellerSnapshot() as $identity) {
             $this->registry->seller($identity['seller_id'])?->send($ping);
         }
+    }
+
+    /**
+     * Erro de conexão, no máximo um por janela por conexão.
+     *
+     * O Workerman chama isto uma vez por pacote descartado quando o buffer de
+     * saída está cheio. Num socket de mídia isso é trinta vezes por segundo, e
+     * cada linha é uma escrita em disco dentro do event loop — o log do
+     * congestionamento passava a ser mais uma causa dele. A política do
+     * `MirrorRouter` mais o teto de 768 KiB devem impedir que isso aconteça;
+     * a janela existe para o caso de não impedirem.
+     */
+    private function onConnectionError(TcpConnection $connection, int $code, string $message): void
+    {
+        $now  = microtime(true);
+        $seen = $this->errorWindow[$connection->id] ?? 0.0;
+
+        if ($now - $seen < self::ERROR_WINDOW_SECONDS) {
+            return;
+        }
+
+        $this->errorWindow[$connection->id] = $now;
+
+        RelayLog::error("conexão {$connection->id} com erro {$code}: {$message}");
     }
 
     private function closeSilent(TcpConnection $connection): void
