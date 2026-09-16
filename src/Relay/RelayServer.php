@@ -218,11 +218,19 @@ class RelayServer
         );
 
         $this->tuneMirrorConnection($connection);
-        $this->mirrors->openSource($connection, $identity);
+        $opened = $this->mirrors->openSource($connection, $identity);
 
         RelayLog::info(
             "espelhamento {$identity['session_id']} aberto por {$identity['seller_id']}"
         );
+
+        // Painéis que discaram antes da fonte chegar entram agora.
+        foreach ($opened['waiting'] as $sink) {
+            $this->mirrorRouter->warmUp($opened['key'], $sink);
+            RelayLog::info(
+                "painel que esperava entrou no espelhamento {$identity['session_id']}"
+            );
+        }
     }
 
     private function admitMirrorSink(TcpConnection $connection, array $identity): void
@@ -233,11 +241,7 @@ class RelayServer
             RelayLog::warning(
                 "painel recusado no espelhamento {$identity['session_id']}: {$verdict['reason']}"
             );
-            $connection->close(Envelope::encode([
-                'type'  => 'error',
-                'error' => $verdict['reason'],
-                'code'  => $verdict['code'],
-            ]));
+            $this->refuseMirror($connection, $verdict['code'], $verdict['reason']);
             return;
         }
 
@@ -248,9 +252,41 @@ class RelayServer
         );
 
         $this->tuneMirrorConnection($connection);
+
+        if (($verdict['pending'] ?? false) === true) {
+            // A fonte ainda não chegou. O socket fica aberto, sem receber nada,
+            // até ela aparecer ou até o prazo estourar.
+            RelayLog::info(
+                "painel aguardando a fonte do espelhamento {$identity['session_id']}"
+            );
+            return;
+        }
+
         $this->mirrorRouter->warmUp($verdict['key'], $connection);
 
         RelayLog::info("painel entrou no espelhamento {$identity['session_id']}");
+    }
+
+    /**
+     * Fecha uma conexão de espelhamento dizendo por quê.
+     *
+     * Volta o frame para **texto** antes de escrever. As conexões de mídia
+     * carregam `BINARY_TYPE_ARRAYBUFFER` porque é isso que o vídeo exige, e
+     * sem trocar aqui a explicação saía como um frame binário — que o painel
+     * tentava ler como quadro, descartava por não ter a assinatura, e o
+     * operador ficava com "a conexão com o relay caiu" para todo motivo
+     * diferente.
+     */
+    private function refuseMirror(TcpConnection $connection, int $code, string $reason): void
+    {
+        $connection->websocketType = Websocket::BINARY_TYPE_BLOB;
+
+        $this->registry->forget($connection);
+        $connection->close(Envelope::encode([
+            'type'  => 'error',
+            'error' => $reason,
+            'code'  => $code,
+        ]));
     }
 
     /**
@@ -278,6 +314,17 @@ class RelayServer
      */
     private function sweepIdleMirrors(): void
     {
+        foreach ($this->mirrors->expiredOrphanSinks() as $orphan) {
+            RelayLog::warning(
+                'painel desistiu de esperar: nenhuma fonte com este ticket'
+            );
+            $this->refuseMirror(
+                $orphan,
+                Handshake::CLOSE_MIRROR_NO_PEER,
+                'Nenhuma transmissão com este ticket.'
+            );
+        }
+
         foreach ($this->mirrors->idleSessions() as $key => $session) {
             RelayLog::info(
                 "espelhamento {$session['session_id']} encerrado: "
@@ -303,12 +350,11 @@ class RelayServer
         }
 
         foreach ($closed['sinks'] as $sink) {
-            $this->registry->forget($sink);
-            $sink->close(Envelope::encode([
-                'type'  => 'error',
-                'error' => 'Transmissão encerrada.',
-                'code'  => Handshake::CLOSE_MIRROR_SOURCE_GONE,
-            ]));
+            $this->refuseMirror(
+                $sink,
+                Handshake::CLOSE_MIRROR_SOURCE_GONE,
+                'A transmissão foi encerrada no aparelho.'
+            );
         }
 
         $this->mirrorRouter->announceStop(

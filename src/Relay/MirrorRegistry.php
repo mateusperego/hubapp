@@ -59,12 +59,28 @@ class MirrorRegistry
     /** @var array<int, string> id da conexão => chave da sessão */
     private array $sessionByConnection = [];
 
+    /**
+     * Painéis que chegaram antes da fonte.
+     *
+     * A corrida é real e não teórica: o aparelho abre o socket de mídia de
+     * forma assíncrona e anuncia o `mirror_ready` em seguida, então o painel
+     * pode discar antes do hello da fonte chegar aqui. Recusar na hora fazia o
+     * espelhamento falhar no instante em que o vendedor autorizava.
+     *
+     * @var array<string, array<int, array{connection: TcpConnection, since: float}>>
+     */
+    private array $pendingSinks = [];
+
     public static function keyFor(string $sellerId, string $ticket): string
     {
         return $sellerId . "\0" . $ticket;
     }
 
-    public function openSource(TcpConnection $connection, array $identity): string
+    /**
+     * @return array{key: string, waiting: TcpConnection[]} os painéis que já
+     *         estavam esperando por esta fonte
+     */
+    public function openSource(TcpConnection $connection, array $identity): array
     {
         $key = self::keyFor($identity['seller_id'], $identity['ticket']);
 
@@ -88,7 +104,19 @@ class MirrorRegistry
 
         $this->sessionByConnection[$connection->id] = $key;
 
-        return $key;
+        // Os painéis que chegaram antes entram agora, na ordem em que vieram.
+        $waiting = [];
+
+        foreach ($this->pendingSinks[$key] ?? [] as $parked) {
+            $verdict = $this->attachSink($parked['connection'], $identity);
+            if ($verdict['ok'] === true) {
+                $waiting[] = $parked['connection'];
+            }
+        }
+
+        unset($this->pendingSinks[$key]);
+
+        return ['key' => $key, 'waiting' => $waiting];
     }
 
     /**
@@ -99,11 +127,15 @@ class MirrorRegistry
         $key = self::keyFor($identity['seller_id'], $identity['ticket']);
 
         if (!isset($this->sessions[$key])) {
-            return [
-                'ok'     => false,
-                'code'   => Handshake::CLOSE_MIRROR_NO_PEER,
-                'reason' => 'Nenhuma transmissão com este ticket.',
+            // Fica de lado em vez de ser recusado. A fonte pode estar a
+            // milissegundos de chegar, e é o `sweepOrphanSinks` que decide
+            // quando desistir.
+            $this->pendingSinks[$key][$connection->id] = [
+                'connection' => $connection,
+                'since'      => microtime(true),
             ];
+
+            return ['ok' => true, 'key' => $key, 'pending' => true];
         }
 
         if (count($this->sessions[$key]['sinks']) >= self::MAX_SINKS) {
@@ -224,6 +256,13 @@ class MirrorRegistry
 
     public function detachSink(TcpConnection $connection): ?string
     {
+        foreach ($this->pendingSinks as $parkedKey => $parked) {
+            unset($this->pendingSinks[$parkedKey][$connection->id]);
+            if ($this->pendingSinks[$parkedKey] === []) {
+                unset($this->pendingSinks[$parkedKey]);
+            }
+        }
+
         $key = $this->sessionByConnection[$connection->id] ?? null;
         unset($this->sessionByConnection[$connection->id]);
 
@@ -312,6 +351,32 @@ class MirrorRegistry
         }
 
         return $idle;
+    }
+
+    /**
+     * Painéis que esperaram demais por uma fonte que não veio.
+     *
+     * @return TcpConnection[]
+     */
+    public function expiredOrphanSinks(): array
+    {
+        $now     = microtime(true);
+        $expired = [];
+
+        foreach ($this->pendingSinks as $key => $parked) {
+            foreach ($parked as $id => $entry) {
+                if ($now - $entry['since'] > self::SINK_ORPHAN_SECONDS) {
+                    $expired[] = $entry['connection'];
+                    unset($this->pendingSinks[$key][$id]);
+                }
+            }
+
+            if ($this->pendingSinks[$key] === []) {
+                unset($this->pendingSinks[$key]);
+            }
+        }
+
+        return $expired;
     }
 
     /** @return string[] chaves das sessões deste vendedor */
