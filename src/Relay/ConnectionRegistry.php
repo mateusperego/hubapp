@@ -80,10 +80,13 @@ class ConnectionRegistry
         $sellerId = $identity['seller_id'];
         $previous = $this->sellers[$sellerId] ?? null;
 
-        if ($previous !== null) {
-            $this->forget($previous);
-        }
-
+        // A conexão anterior **não** é esquecida aqui, e isso é o ponto: sem
+        // papel nem nome, o `onClose` dela não reconhecia um vendedor e as
+        // sessões de espelhamento que ela tinha aberto ficavam órfãs no
+        // `MirrorRegistry` — vivas o bastante para o varredor de ociosidade
+        // mandar, segundos depois, um `mirror_stop` que derrubava a sessão
+        // seguinte. O `forget` já confere identidade antes de apagar o índice,
+        // então deixá-lo para o `onClose` é seguro.
         $this->promote($connection, Handshake::ROLE_SELLER, $sellerId);
         $this->sellers[$sellerId]          = $connection;
         $this->sellerIdentities[$sellerId] = $identity;

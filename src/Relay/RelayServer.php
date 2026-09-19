@@ -262,6 +262,16 @@ class RelayServer
             "espelhamento {$identity['session_id']} aberto por {$identity['seller_id']}"
         );
 
+        // Os que esperavam e não couberam saem com a recusa na mão. Soltar a
+        // referência deixava o socket aberto sem dono e sem watchdog.
+        foreach ($opened['refused'] as $sink) {
+            RelayLog::warning(
+                "painel que esperava foi recusado no espelhamento "
+                . "{$identity['session_id']}: {$sink['reason']}"
+            );
+            $this->refuseMirror($sink['connection'], $sink['code'], $sink['reason']);
+        }
+
         // Painéis que discaram antes da fonte chegar entram agora.
         foreach ($opened['waiting'] as $sink) {
             $this->mirrorRouter->warmUp($opened['key'], $sink);
@@ -545,7 +555,16 @@ class RelayServer
 
         // O payload vai cru: o app recebe exatamente o que o painel escreveu,
         // sem envelope.
-        $seller->send(Envelope::encode($payload));
+        //
+        // O retorno importa: uma conexão em fechamento aceita o `send` e não
+        // entrega nada, e o painel ficava esperando o `req_id` até o tempo
+        // limite dele sem saber que a mensagem nunca saiu.
+        if ($seller->send(Envelope::encode($payload)) === false) {
+            RelayLog::warning("envio para o vendedor {$sellerId} recusado pelo socket");
+            $connection->send(
+                Envelope::errorFor($sellerId, $reqId, 'Não foi possível falar com o aparelho.')
+            );
+        }
     }
 
     private function fromSeller(TcpConnection $connection, array $message): void

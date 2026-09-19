@@ -198,10 +198,24 @@ class MirrorRegistry
 
         // Os painéis que chegaram antes entram agora, na ordem em que vieram.
         $waiting = [];
+        $refused = [];
 
         foreach ($this->pendingSinks[$key] ?? [] as $parked) {
             $verdict = $this->attachSink($parked['connection'], $identity);
-            if ($verdict['ok'] === true && ($verdict['pending'] ?? false) !== true) {
+
+            if ($verdict['ok'] !== true) {
+                // Recusado por não caber. Antes a referência era só solta, e a
+                // conexão ficava aberta para sempre: fora de `sellers` e de
+                // `panels`, nenhum watchdog a alcança.
+                $refused[] = [
+                    'connection' => $parked['connection'],
+                    'code'       => $verdict['code'],
+                    'reason'     => $verdict['reason'],
+                ];
+                continue;
+            }
+
+            if (($verdict['pending'] ?? false) !== true) {
                 $waiting[] = $parked['connection'];
             }
         }
@@ -211,6 +225,7 @@ class MirrorRegistry
         return [
             'key'            => $key,
             'waiting'        => $waiting,
+            'refused'        => $refused,
             'retained'       => array_values($retainedSinks),
             'previousSource' => $previousSource,
         ];
