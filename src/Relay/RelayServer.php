@@ -366,7 +366,11 @@ class RelayServer
     {
         $connection->websocketType     = Websocket::BINARY_TYPE_ARRAYBUFFER;
         $connection->maxSendBufferSize = 786432; // 768 KiB
-        $connection->maxPackageSize    = MirrorFrame::MAX_BYTES;
+        // O Workerman conta o cabeçalho do WebSocket (até 14 bytes) no
+        // tamanho do pacote. Com o teto igual ao do frame, um frame no limite
+        // fechava a fonte ali mesmo, sem passar pelo `readHeader` nem deixar
+        // linha no log — só um `safeEcho` que em daemon vai para lugar nenhum.
+        $connection->maxPackageSize    = MirrorFrame::MAX_BYTES + 14;
     }
 
     /**
@@ -608,7 +612,23 @@ class RelayServer
             // Espelhamento não sobrevive ao canal de controle do dono. Se a
             // sessão continuasse, o painel ficaria recebendo imagem de um
             // vendedor que a lista de conectados já mostra como offline.
+            //
+            // A exceção é a reconexão: o celular refaz o canal de controle a
+            // cada troca de rede, e o socket de vídeo, que é outro, muitas
+            // vezes atravessa a troca inteiro. Derrubar a sessão aí tirava a
+            // imagem do suporte sem que nada tivesse quebrado. Só sobrevive a
+            // sessão cuja fonte está de fato entregando quadros; a que ficou
+            // meio-aberta na troca é encerrada como antes, senão o varredor a
+            // encerraria segundos depois com um `mirror_stop` capaz de
+            // derrubar a sessão seguinte.
+            $replaced = $this->registry->seller($name) !== null;
+
             foreach ($this->mirrors->keysOfSeller($name) as $key) {
+                if ($replaced && $this->mirrors->isStreaming($key)) {
+                    RelayLog::info("espelhamento de {$name} mantido na reconexão do controle");
+                    continue;
+                }
+
                 $this->closeMirrorSession($key, 'source_gone');
             }
 

@@ -64,6 +64,16 @@ class MirrorRegistry
     public const SOURCE_STALE_SECONDS = 8.0;
 
     /**
+     * Fonte que mandou quadro há menos que isto está transmitindo.
+     *
+     * Usado quando o canal de controle do vendedor é substituído por um novo:
+     * decide se a sessão atravessou a troca de rede ou ficou para trás. A tela
+     * parada ainda rende uns 10 quadros por segundo (ver
+     * [SOURCE_STALE_SECONDS]), então dois segundos sem nada já é silêncio.
+     */
+    public const STREAMING_SECONDS = 2.0;
+
+    /**
      * Um aparelho, um encoder. Painéis a mais são fan-out do mesmo frame: custa
      * N× no enlace do relay e 0× no celular.
      */
@@ -624,6 +634,22 @@ class MirrorRegistry
         }
 
         return $expired;
+    }
+
+    /** A fonte da sessão entregou quadro nos últimos [STREAMING_SECONDS]. */
+    public function isStreaming(string $key): bool
+    {
+        $session = $this->sessions[$key] ?? null;
+
+        if ($session === null) {
+            return false;
+        }
+
+        // `lastFrameAt` nasce valendo a abertura, não um quadro de verdade:
+        // sem exigir ao menos um, uma fonte que abriu e ficou meio-aberta na
+        // troca de rede passaria por viva nos primeiros segundos.
+        return $session['framesIn'] > 0
+            && microtime(true) - $session['lastFrameAt'] < self::STREAMING_SECONDS;
     }
 
     /** @return string[] chaves das sessões deste vendedor */

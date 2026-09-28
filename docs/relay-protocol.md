@@ -314,6 +314,7 @@ leva cerca de nove degraus, uns cinco segundos.
 | **fonte reconecta com o mesmo ticket** | mantém os painéis, volta todos para `warming`, fecha a conexão anterior e pede keyframe |
 | **fonte para de entregar imagem** | 8 s de silêncio encerram a sessão: `mirror_stop` ao aparelho, 4011 aos painéis |
 | canal de **controle** do vendedor cai | derruba junto as sessões dele |
+| canal de **controle** do vendedor é **substituído** (reconexão) | mantém a sessão cuja fonte entregou quadro nos últimos **2 s**; derruba as demais |
 
 A tolerância de 3 s não é conforto: sem ela, um painel fechado à força deixaria
 o celular codificando e gastando bateria e a franquia de dados do vendedor
