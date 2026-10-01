@@ -21,11 +21,18 @@ use Workerman\Worker;
  */
 class RelayServer
 {
-    /** Intervalo do ping de aplicação para cada ponta. */
-    private const HEARTBEAT_SECONDS = 30;
+    /**
+     * Intervalo do ping de aplicação para cada ponta.
+     *
+     * Era 30 s. Um celular que perde a rede sem FIN continua `ESTABLISHED`
+     * aqui, o `send` para ele dá certo e a mensagem some; com 30/90 o painel
+     * listava esse vendedor por até dois minutos e cada pedido morria no
+     * tempo limite dele.
+     */
+    private const HEARTBEAT_SECONDS = 15;
 
     /** Silêncio total por três janelas de ping derruba a conexão. */
-    private const SILENCE_TOLERANCE_SECONDS = 90;
+    private const SILENCE_TOLERANCE_SECONDS = 45;
 
     /** Varredura das sessões de espelhamento sem ninguém assistindo. */
     private const MIRROR_SWEEP_SECONDS = 2;
@@ -547,6 +554,9 @@ class RelayServer
         $seller   = $this->registry->seller($sellerId);
 
         if ($seller === null) {
+            RelayLog::warning(
+                "pedido {$this->describeRequest($payload, $reqId)} para {$sellerId}, que não está conectado"
+            );
             $connection->send(
                 Envelope::errorFor($sellerId, $reqId, 'Vendedor não está conectado.')
             );
@@ -587,7 +597,9 @@ class RelayServer
             $origin = $this->registry->panelWaitingFor($reqId);
 
             if ($origin !== null) {
-                $origin->send($frame);
+                if ($origin->send($frame) === false) {
+                    $this->warnDroppedAnswer($sellerId, $message, $reqId);
+                }
                 return;
             }
         }
@@ -595,8 +607,30 @@ class RelayServer
         // Sem req_id conhecido (um erro espontâneo, por exemplo) todo painel
         // precisa saber.
         foreach ($this->registry->panels() as $panel) {
-            $panel->send($frame);
+            if ($panel->send($frame) === false) {
+                $this->warnDroppedAnswer($sellerId, $message, $reqId);
+            }
         }
+    }
+
+    /**
+     * Resposta do aparelho que não coube no buffer do painel.
+     *
+     * Sem esta linha, o painel via só o próprio tempo limite e o aparelho
+     * parecia não ter respondido — a resposta tinha chegado aqui.
+     */
+    private function warnDroppedAnswer(string $sellerId, array $message, ?string $reqId): void
+    {
+        RelayLog::warning(
+            "resposta {$this->describeRequest($message, $reqId)} de {$sellerId} descartada: painel não aceitou o envio"
+        );
+    }
+
+    private function describeRequest(array $message, ?string $reqId): string
+    {
+        $type = is_string($message['type'] ?? null) ? $message['type'] : '?';
+
+        return "\"{$type}\" (req_id: " . ($reqId ?? 'ausente') . ')';
     }
 
     private function onClose(TcpConnection $connection): void

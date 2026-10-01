@@ -18,6 +18,7 @@ use HubApp\Helpers\EnvHelper;
 use HubApp\Relay\Handshake;
 use HubApp\Relay\RelayLog;
 use HubApp\Relay\RelayServer;
+use Workerman\Worker;
 
 $token = (string) EnvHelper::get('RELAY_TOKEN', '');
 
@@ -45,8 +46,13 @@ $allowlist = array_values(array_filter(array_map(
 )));
 
 // Em daemon o stdout vai para o log do Workerman; escrever nos dois duplicaria.
+//
+// O `stdoutFile` padrão do Workerman é /dev/null, e é por ele que sai o
+// `error package` de um frame acima do teto — o fechamento da conexão de um
+// vendedor por resposta grande demais não deixava rastro em lugar nenhum.
 if (in_array('-d', $argv, true)) {
     RelayLog::silenceStdout();
+    Worker::$stdoutFile = __DIR__ . '/../storage/logs/workerman_stdout.log';
 }
 
 (new RelayServer($port, new Handshake($token, $allowlist), $bind))->run();

@@ -116,7 +116,7 @@ class ConnectionRegistry
      *
      * Efeito colateral desejado: como estas conexões não estão naqueles mapas,
      * o `connectionById` não as encontra e o watchdog de silêncio não as ceifa.
-     * O sink nunca fala — seria derrubado em 90 s — e a saúde dele já é
+     * O sink nunca fala — seria derrubado em 45 s — e a saúde dele já é
      * observável pelo tamanho do buffer de saída.
      */
     public function recordMirror(TcpConnection $connection, string $role, string $name): void

@@ -341,7 +341,7 @@ uns 10 quadros por segundo. Silêncio total não é tela quieta, é fonte morta.
 As conexões de espelhamento **não** recebem o `ping` de aplicação: ele chegaria
 como um frame binário de 15 bytes no meio do fluxo H.264 e o painel precisaria
 de um caso especial para ele. Elas também ficam fora do watchdog de silêncio —
-o sink nunca fala e seria ceifado em 90 s, e a saúde dele já é observável pelo
+o sink nunca fala e seria ceifado em 45 s, e a saúde dele já é observável pelo
 tamanho do buffer de saída.
 
 > **Correção de uma afirmação que estava aqui e era falsa.** Dizia-se que "o
@@ -355,9 +355,15 @@ tamanho do buffer de saída.
 
 ## 5. Heartbeat
 
-O relay manda `{"type":"ping"}` para cada ponta a cada **30 s** e espera `{"type":"pong"}`.
-Nenhum tráfego por **90 s** (três janelas) fecha a conexão; no caso de um vendedor, isso emite
+O relay manda `{"type":"ping"}` para cada ponta a cada **15 s** e espera `{"type":"pong"}`.
+Nenhum tráfego por **45 s** (três janelas) fecha a conexão; no caso de um vendedor, isso emite
 `seller_offline` com `reason: "timeout"`.
+
+Eram 30 s e 90 s. Um celular que perde a rede sem fechar o socket (troca de Wi-Fi para 4G, NAT
+da operadora, Doze) continua `ESTABLISHED` aqui: o `send` para ele dá certo e a mensagem some sem
+erro. Com a varredura a cada 30 s, o painel listava esse vendedor por até dois minutos e cada
+pedido — o `schema` ao abrir o console, por exemplo — morria no tempo limite de 30 s do painel.
+Com 15/45, a janela cai para no máximo 60 s.
 
 Ping de aplicação, e não só o frame de controle do WebSocket, porque um proxy intermediário pode
 responder o controle sem que o processo do relay esteja vivo.
@@ -369,11 +375,11 @@ daqui está vivo, pelo mesmo argumento do parágrafo acima.
 
 As duas mensagens vão nuas, fora do envelope `{seller_id, payload}`: são endereçadas à outra
 ponta, não a um vendedor. Cada lado precisa de um caso próprio para o `pong` nu — sem ele a
-mensagem cai no caminho do envelope e vira uma linha de descarte a cada 30 segundos, que enterra
+mensagem cai no caminho do envelope e vira uma linha de descarte a cada ping, que enterra
 o log de verdade.
 
 > **Ponto de atenção no deploy:** o balanceador do Jelastic (nginx) costuma cortar conexão ociosa
-> em 60–75 s. Os 30 s de ping ficam abaixo disso, mas confirme o valor real do ambiente — é a
+> em 60–75 s. Os 15 s de ping ficam abaixo disso, mas confirme o valor real do ambiente — é a
 > falha mais comum desse tipo de deploy, e ela aparece só de madrugada, sem tráfego.
 
 ## 6. Autenticação
