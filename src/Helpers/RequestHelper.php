@@ -13,6 +13,17 @@ class RequestHelper
     }
 
     /**
+     * Como getJsonInput, mas devolve null quando o corpo não é JSON de
+     * array/objeto, em vez de confundi-lo com um array vazio.
+     */
+    public static function getJsonInputOrNull(): ?array
+    {
+        $decoded = json_decode(file_get_contents('php://input'), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    /**
      * Obtém o valor de um header HTTP
      *
      * @param string $name Nome do header (case-insensitive)
