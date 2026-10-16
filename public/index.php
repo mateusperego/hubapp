@@ -8,6 +8,7 @@ use HubApp\Controllers\PushNotificationController;
 use HubApp\Controllers\LetsSignController;
 use HubApp\Controllers\ImageController;
 use HubApp\Controllers\BackupController;
+use HubApp\Controllers\LogoController;
 use FastRoute\RouteCollector;
 
 $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
@@ -136,6 +137,15 @@ $dispatcher = FastRoute\simpleDispatcher(function (RouteCollector $r) {
         'DELETE',
         '/public/images/{cnpj}/{codigo}',
         [ImageController::class, 'delete']
+    );
+
+    /* =======================
+     * LOGOS
+     * ======================= */
+    $r->addRoute(
+        'GET',
+        '/public/logos/{cnpj}',
+        [LogoController::class, 'serve']
     );
 
     /* =======================

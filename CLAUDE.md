@@ -78,6 +78,21 @@ composer clear-cache
 2. `DanfeService::gerar($xmlName)` loads XML from `storage/xml/` and generates PDF using NFePHP
 3. `ResponseHelper::pdf()` outputs the PDF with appropriate headers
 
+### Logos das empresas (`GET /public/logos/{cnpj}`)
+
+O app adm_vendas baixa a logo de cada CNPJ dos centros de custo, dos locais e da licença a
+cada sincronização e guarda no aparelho. Para cadastrar a logo de um cliente novo basta
+copiar o arquivo para `storage/logos/`, sem precisar de versão nova do app:
+
+- `{cnpj14}.png` (ou `.jpg`) vale só para aquela filial; `{raiz8}.png` (as 8 primeiras
+  posições) vale para todas as filiais. O CNPJ cheio tem prioridade. Nome só com letras e
+  dígitos, em maiúsculas (o CNPJ alfanumérico tem letras).
+- PNG ou JPEG de até 2 MB — o app recusa outro formato e um arquivo maior, e `webp` não
+  entra porque o gerador de PDF do app não lê.
+- A rota é aberta (como `/public/images`) e responde com `ETag`; o app manda
+  `If-None-Match` e recebe 304 quando nada mudou. 404 faz o app apagar a cópia local e
+  voltar para a logo embutida ou o ícone.
+
 ### Namespace
 - All classes use the `HubApp\` namespace (PSR-4 autoloading via Composer)
 
