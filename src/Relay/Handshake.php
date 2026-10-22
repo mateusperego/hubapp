@@ -35,6 +35,16 @@ class Handshake
     public const CLOSE_MIRROR_NO_PEER     = 4010;
     public const CLOSE_MIRROR_SOURCE_GONE = 4011;
     public const CLOSE_MIRROR_TOO_MANY    = 4012;
+    public const CLOSE_MIRROR_ENDED       = 4013;
+
+    /**
+     * O id com que todo painel até a 1.2.0 saía de fábrica.
+     *
+     * Esses painéis tratam o 4009 como queda comum e reconectam. Com a troca
+     * pelo último que chega, dois deles sob este id se derrubariam um ao outro
+     * para sempre; por isso, só para ele, o segundo continua recusado.
+     */
+    public const LEGACY_PANEL_ID = 'painel-suporte';
 
     private string $token;
 

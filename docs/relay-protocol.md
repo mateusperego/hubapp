@@ -93,17 +93,35 @@ Sem ele, um `seller_offline` perdido numa queda de rede viraria vendedor fantasm
 | 4000 | `hello` malformado ou fora do prazo | sim |
 | 4001 | token inválido | **não** — pede ação humana |
 | 4003 | `role` desconhecida | **não** |
-| 4009 | `panel_id` já conectado | **não** |
+| 4009 | outro painel entrou com o mesmo `panel_id` e ficou no lugar deste | **não** |
 | 4010 | ticket de espelhamento sem par | **não** — peça um `mirror_start` novo |
 | 4011 | a fonte do espelhamento caiu | **não** |
 | 4012 | limite de painéis nesta transmissão | **não** |
+| 4013 | a transmissão foi encerrada pelo relay (vai para a **fonte**) | **não** — o aparelho encerra a captura |
 
 > **O número 40xx não viaja no close frame.** O relay manda um frame de **texto**
 > `{"type":"error","error":"…","code":4011}` e fecha em seguida; o Workerman fecha com
 > 1000/1006, então é no *payload* que está a informação, não no `closeCode`. Quem quiser
 > decidir "tentar de novo ou não" de forma programática tem de ler o campo `code` dessa
-> mensagem — o painel hoje lê só o texto e descarta o `code`, o que basta para explicar ao
-> operador e não basta para um retry automático.
+> mensagem — e é o que o painel e a fonte do aparelho fazem.
+
+**Painel com o mesmo `panel_id`: quem chega por último fica.** O anterior recebe 4009 e
+fecha. Antes o segundo era recusado, e como todo painel saía de fábrica com
+`painel-suporte`, o colega do suporte não conseguia entrar enquanto o primeiro estivesse
+online — e o próprio painel, voltando de uma queda antes de o relay notar a conexão
+meio-aberta, ficava até 45 s barrado por ele mesmo. Hoje cada instalação do painel sorteia
+o seu id. O painel trata 4009 como definitivo, então duas máquinas configuradas com o mesmo
+id param na segunda troca em vez de tomarem a vaga uma da outra para sempre.
+
+A exceção é o próprio `painel-suporte`: painéis até a 1.2.0 tratam o 4009 como queda e
+reconectam, e dois deles sob esse id se derrubariam em loop. Para esse id, e só para ele,
+o segundo continua sendo **recusado**, como antes. Um painel novo nunca o usa — troca por um
+próprio na primeira abertura —, então a ordem de publicação de relay e painéis não importa.
+
+As respostas do aparelho voltam para a **conexão** que perguntou, não para o nome: um
+painel que assumiu o mesmo id não recebe a resposta de um pedido que não fez. Se quem
+perguntou já saiu, a resposta é descartada — antes ela ia para todos os painéis, com os
+dados do vendedor junto. Só uma mensagem sem `req_id` conhecido vai para todos.
 
 ## 3. Presença (relay → painel)
 
@@ -311,6 +329,9 @@ leva cerca de nove degraus, uns cinco segundos.
 | segundo painel | fan-out do mesmo frame; teto de 4, depois 4012 |
 | último painel sai | tolera **3 s** (o bastante para reconectar) e manda o aparelho parar com `no_sink` |
 | socket da fonte cai | destrói a sessão, fecha os painéis com 4011, anuncia `source_gone` |
+| **sessão encerrada por qualquer motivo** | fecha também a fonte, com 4013, e guarda a sessão como encerrada por 10 min |
+| fonte volta com o ticket de uma sessão encerrada | recusa com 4013 — não abre sessão nova |
+| vendedor volta ao controle depois de uma sessão encerrada | manda o `mirror_stop` que não teve por onde ir — só o que não chegou, uma vez |
 | **fonte reconecta com o mesmo ticket** | mantém os painéis, volta todos para `warming`, fecha a conexão anterior e pede keyframe |
 | **fonte para de entregar imagem** | 8 s de silêncio encerram a sessão: `mirror_stop` ao aparelho, 4011 aos painéis |
 | canal de **controle** do vendedor cai | derruba junto as sessões dele |

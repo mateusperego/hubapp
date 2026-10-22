@@ -280,14 +280,23 @@ class MirrorRouter
         $this->askKeyframe($key, 'join');
     }
 
-    /** Diz ao aparelho para parar de codificar. */
-    public function tellSourceToStop(string $sellerId, string $sessionId, string $reason): void
+    /**
+     * Diz ao aparelho para parar de codificar. Devolve se a ordem saiu: sem
+     * canal de controle ela fica para quando o vendedor voltar.
+     */
+    public function tellSourceToStop(string $sellerId, string $sessionId, string $reason): bool
     {
-        $this->registry->seller($sellerId)?->send(Envelope::encode([
+        $seller = $this->registry->seller($sellerId);
+
+        if ($seller === null) {
+            return false;
+        }
+
+        return $seller->send(Envelope::encode([
             'type'       => 'mirror_stop',
             'session_id' => $sessionId,
             'reason'     => $reason,
-        ]));
+        ])) !== false;
     }
 
     /** Avisa os painéis de que a transmissão acabou, pelo canal de controle. */

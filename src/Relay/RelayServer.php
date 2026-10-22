@@ -193,14 +193,31 @@ class RelayServer
 
     private function admitPanel(TcpConnection $connection, string $panelId): void
     {
-        if (!$this->registry->recordPanel($connection, $panelId)) {
+        if ($panelId === Handshake::LEGACY_PANEL_ID
+            && $this->registry->panel($panelId) !== null) {
             RelayLog::warning("painel {$panelId} recusado: já existe um conectado");
+            $this->registry->forget($connection);
             $connection->close(Envelope::encode([
                 'type'  => 'error',
                 'error' => "Já existe um painel conectado como {$panelId}.",
                 'code'  => Handshake::CLOSE_PANEL_EXISTS,
             ]));
             return;
+        }
+
+        $previous = $this->registry->recordPanel($connection, $panelId);
+
+        // O anterior sai com o motivo na mão, e o painel trata 4009 como
+        // definitivo: duas máquinas com o mesmo id param na segunda troca em
+        // vez de tomarem a vaga uma da outra para sempre. Quando o anterior
+        // era o próprio painel numa conexão meio-aberta, ninguém lê o aviso.
+        if ($previous !== null) {
+            RelayLog::warning("painel {$panelId} reconectou; conexão anterior encerrada");
+            $previous->close(Envelope::encode([
+                'type'  => 'error',
+                'error' => "Outro painel entrou como {$panelId}.",
+                'code'  => Handshake::CLOSE_PANEL_EXISTS,
+            ]));
         }
 
         // O snapshot vai junto com o welcome e é autoritativo: sem ele, um
@@ -231,6 +248,14 @@ class RelayServer
             'seller_id' => $sellerId,
         ]));
 
+        // O espelhamento que acabou enquanto o controle estava fora. O aparelho
+        // só obedece a um stop que nomeia a sessão viva dele, então mandar
+        // para uma que ele já largou não derruba nada.
+        foreach ($this->mirrors->untoldEndingsOf($sellerId) as $sessionId) {
+            RelayLog::info("espelhamento {$sessionId}: avisando {$sellerId} na volta do controle");
+            $this->mirrorRouter->tellSourceToStop($sellerId, $sessionId, 'source_gone');
+        }
+
         $this->announce([
             'type'      => 'seller_online',
             'seller_id' => $sellerId,
@@ -242,6 +267,23 @@ class RelayServer
 
     private function admitMirrorSource(TcpConnection $connection, array $identity): void
     {
+        // Fonte voltando para uma sessão que o relay já encerrou. Aceitar
+        // abriria uma sessão sem ninguém assistindo, com o aparelho
+        // transmitindo e o aviso de suporte aceso na tela do vendedor. O
+        // código diz ao aparelho que não adianta tentar de novo.
+        if ($this->mirrors->hasEnded($identity['seller_id'], $identity['ticket'])) {
+            RelayLog::info(
+                "espelhamento {$identity['session_id']}: fonte voltou para uma "
+                . 'sessão já encerrada; recusada'
+            );
+            $this->refuseMirror(
+                $connection,
+                Handshake::CLOSE_MIRROR_ENDED,
+                'Esta transmissão já foi encerrada.'
+            );
+            return;
+        }
+
         $this->registry->recordMirror(
             $connection,
             Handshake::ROLE_MIRROR_SOURCE,
@@ -411,13 +453,13 @@ class RelayServer
                 . 'entrega imagem há ' . (int) round($session['silent']) . 's'
             );
 
-            $this->mirrorRouter->tellSourceToStop(
+            $told = $this->mirrorRouter->tellSourceToStop(
                 $session['seller_id'],
                 $session['session_id'],
                 'error'
             );
 
-            $this->closeMirrorSession($key, 'source_gone');
+            $this->closeMirrorSession($key, 'source_gone', $told);
         }
 
         foreach ($this->mirrors->idleSessions() as $key => $session) {
@@ -426,23 +468,27 @@ class RelayServer
                 . "{$session['reason']}"
             );
 
-            $this->mirrorRouter->tellSourceToStop(
+            $told = $this->mirrorRouter->tellSourceToStop(
                 $session['seller_id'],
                 $session['session_id'],
                 'no_sink'
             );
 
-            $this->closeMirrorSession($key, 'no_sink');
+            $this->closeMirrorSession($key, 'no_sink', $told);
         }
     }
 
-    private function closeMirrorSession(string $key, string $reason): void
+    /**
+     * @param bool $deviceTold o aparelho já recebeu o `mirror_stop`. Quando
+     *        não, a ordem fica guardada e sai na volta do vendedor.
+     */
+    private function closeMirrorSession(string $key, string $reason, bool $deviceTold = false): void
     {
         // Lido antes de fechar: depois do `closeSession` a sessão não existe
         // mais e com ela vai embora a única medição independente das duas
         // pontas sobre o que esta transmissão realmente fez.
         $summary = $this->mirrors->lifetimeStats($key);
-        $closed  = $this->mirrors->closeSession($key);
+        $closed  = $this->mirrors->closeSession($key, $deviceTold);
 
         $this->mirrorRouter->forgetWarnWindow($key);
 
@@ -464,6 +510,16 @@ class RelayServer
         if ($closed === null) {
             return;
         }
+
+        // A fonte sai junto. Deixá-la aberta era o que mantinha o celular
+        // codificando depois de o controle cair: o relay descartava cada
+        // quadro em silêncio e o socket, sem watchdog, parecia saudável. Se
+        // ela mesma já tinha caído, fechar de novo não faz nada.
+        $this->refuseMirror(
+            $closed['source'],
+            Handshake::CLOSE_MIRROR_ENDED,
+            'A transmissão foi encerrada no relay.'
+        );
 
         foreach ($closed['sinks'] as $sink) {
             $this->refuseMirror(
@@ -564,7 +620,7 @@ class RelayServer
         }
 
         if ($reqId !== null) {
-            $this->registry->rememberRequest($reqId, (string) $this->registry->nameOf($connection));
+            $this->registry->rememberRequest($reqId, $connection);
         }
 
         // O payload vai cru: o app recebe exatamente o que o painel escreveu,
@@ -593,15 +649,23 @@ class RelayServer
 
         // Resposta volta só para quem perguntou. Broadcast faria dois painéis
         // completarem o mesmo req_id e duplicaria o registro de auditoria.
-        if ($reqId !== null) {
+        if ($reqId !== null && $this->registry->isAwaited($reqId)) {
             $origin = $this->registry->panelWaitingFor($reqId);
 
-            if ($origin !== null) {
-                if ($origin->send($frame) === false) {
-                    $this->warnDroppedAnswer($sellerId, $message, $reqId);
-                }
+            // Quem perguntou foi embora. A resposta é dele e de mais ninguém:
+            // mandar a todos entregaria os dados do vendedor a quem não pediu.
+            if ($origin === null) {
+                RelayLog::info(
+                    "resposta {$this->describeRequest($message, $reqId)} de {$sellerId} "
+                    . 'descartada: o painel que perguntou saiu'
+                );
                 return;
             }
+
+            if ($origin->send($frame) === false) {
+                $this->warnDroppedAnswer($sellerId, $message, $reqId);
+            }
+            return;
         }
 
         // Sem req_id conhecido (um erro espontâneo, por exemplo) todo painel

@@ -100,6 +100,21 @@ class MirrorRegistry
     private array $sessionByConnection = [];
 
     /**
+     * Sessões que o relay encerrou e que não podem renascer.
+     *
+     * A fonte reabre o socket sozinha depois de uma queda, com o mesmo ticket,
+     * e o `openSource` montava uma sessão nova para ela: o aparelho seguia
+     * codificando para ninguém, com o aviso "o suporte está vendo a tela"
+     * aceso, até o teto de 30 minutos.
+     *
+     * @var array<string, array{seller_id: string, session_id: string, at: float, told: bool}>
+     */
+    private array $ended = [];
+
+    /** Mais que o teto de reconexão da fonte; menos que o de uma sessão. */
+    public const ENDED_SECONDS = 600.0;
+
+    /**
      * Painéis que chegaram antes da fonte.
      *
      * A corrida é real e não teórica: o aparelho abre o socket de mídia de
@@ -512,7 +527,7 @@ class MirrorRegistry
     }
 
     /** @return array{seller_id: string, session_id: string, sinks: TcpConnection[]}|null */
-    public function closeSession(string $key): ?array
+    public function closeSession(string $key, bool $deviceTold = false): ?array
     {
         $session = $this->sessions[$key] ?? null;
 
@@ -525,11 +540,65 @@ class MirrorRegistry
         }
         unset($this->sessionByConnection[$session['source']->id], $this->sessions[$key]);
 
+        $this->ended[$key] = [
+            'seller_id'  => $session['seller_id'],
+            'session_id' => $session['session_id'],
+            'at'         => microtime(true),
+            // Já avisado, a sessão só fica aqui para barrar a fonte que volta;
+            // repetir o stop a cada reconexão do vendedor não serve a nada.
+            'told'       => $deviceTold,
+        ];
+
         return [
             'seller_id'  => $session['seller_id'],
             'session_id' => $session['session_id'],
+            'source'     => $session['source'],
             'sinks'      => array_values($session['sinks']),
         ];
+    }
+
+    /** Se a sessão desta fonte já foi encerrada pelo relay. */
+    public function hasEnded(string $sellerId, string $ticket): bool
+    {
+        $this->forgetOldEndings();
+
+        return isset($this->ended[self::keyFor($sellerId, $ticket)]);
+    }
+
+    /**
+     * Sessões encerradas deste vendedor das quais o aparelho ainda não ouviu
+     * falar. Cada uma sai daqui uma vez só.
+     *
+     * Quando a sessão acaba porque o canal de controle caiu, o `mirror_stop`
+     * não tem por onde ir. É na volta do vendedor que ele finalmente chega.
+     *
+     * @return string[] session_id de cada uma
+     */
+    public function untoldEndingsOf(string $sellerId): array
+    {
+        $this->forgetOldEndings();
+
+        $sessionIds = [];
+
+        foreach ($this->ended as $key => $ending) {
+            if ($ending['seller_id'] === $sellerId && !$ending['told']) {
+                $this->ended[$key]['told'] = true;
+                $sessionIds[] = $ending['session_id'];
+            }
+        }
+
+        return $sessionIds;
+    }
+
+    private function forgetOldEndings(): void
+    {
+        $now = microtime(true);
+
+        foreach ($this->ended as $key => $ending) {
+            if ($now - $ending['at'] > self::ENDED_SECONDS) {
+                unset($this->ended[$key]);
+            }
+        }
     }
 
     /**

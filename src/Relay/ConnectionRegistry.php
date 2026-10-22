@@ -37,7 +37,10 @@ class ConnectionRegistry
     /** @var array<int, float> id da conexão => último sinal de vida */
     private array $lastSignal = [];
 
-    /** @var array<string, array{panel: string, at: float}> req_id => painel de origem */
+    /**
+     * @var array<string, array{panel: string, connection: int, at: float}>
+     * req_id => painel de origem
+     */
     private array $pendingRequests = [];
 
     /** Uma resposta que não chega nesse prazo deixa de ter dono conhecido. */
@@ -94,17 +97,24 @@ class ConnectionRegistry
         return $previous;
     }
 
-    /** Recusa o segundo painel com o mesmo panel_id em vez de trocar. */
-    public function recordPanel(TcpConnection $connection, string $panelId): bool
+    /**
+     * Registra um painel. Devolve a conexão anterior do mesmo panel_id, se
+     * havia — o chamador a encerra com `CLOSE_PANEL_EXISTS`.
+     *
+     * Antes o segundo era recusado. Como todo painel saía de fábrica com o
+     * mesmo id, o colega do suporte não conseguia entrar enquanto o primeiro
+     * estivesse online; e o próprio painel, voltando de uma queda antes de o
+     * relay notar a conexão meio-aberta, ficava até 45 s barrado por ele
+     * mesmo. Quem chega por último é quem está de fato ali.
+     */
+    public function recordPanel(TcpConnection $connection, string $panelId): ?TcpConnection
     {
-        if (isset($this->panels[$panelId])) {
-            return false;
-        }
+        $previous = $this->panels[$panelId] ?? null;
 
         $this->promote($connection, Handshake::ROLE_PANEL, $panelId);
         $this->panels[$panelId] = $connection;
 
-        return true;
+        return $previous;
     }
 
     /**
@@ -152,11 +162,10 @@ class ConnectionRegistry
                 unset($this->panels[$name]);
             }
 
-            foreach ($this->pendingRequests as $reqId => $origin) {
-                if ($origin['panel'] === $name) {
-                    unset($this->pendingRequests[$reqId]);
-                }
-            }
+            // As requisições do painel que saiu ficam anotadas até o TTL: é
+            // isso que faz a resposta atrasada ser descartada em vez de ir
+            // para todos os painéis. O painel que assumiu o mesmo id continua
+            // esperando as respostas que ele mesmo pediu.
         }
 
         unset(
@@ -176,6 +185,11 @@ class ConnectionRegistry
     public function nameOf(TcpConnection $connection): ?string
     {
         return $this->namesByConnection[$connection->id] ?? null;
+    }
+
+    public function panel(string $panelId): ?TcpConnection
+    {
+        return $this->panels[$panelId] ?? null;
     }
 
     public function seller(string $sellerId): ?TcpConnection
@@ -238,9 +252,19 @@ class ConnectionRegistry
      * Com dois painéis abertos, devolver por broadcast faria os dois completarem
      * o mesmo req_id — e a auditoria registraria a correção duas vezes.
      */
-    public function rememberRequest(string $reqId, string $panelId): void
+    public function rememberRequest(string $reqId, TcpConnection $panel): void
     {
-        $this->pendingRequests[$reqId] = ['panel' => $panelId, 'at' => microtime(true)];
+        $this->pendingRequests[$reqId] = [
+            'panel'      => $this->namesByConnection[$panel->id] ?? '',
+            'connection' => $panel->id,
+            'at'         => microtime(true),
+        ];
+    }
+
+    /** Se algum painel perguntou isto — ainda que já tenha ido embora. */
+    public function isAwaited(string $reqId): bool
+    {
+        return isset($this->pendingRequests[$reqId]);
     }
 
     public function panelWaitingFor(string $reqId): ?TcpConnection
@@ -253,7 +277,11 @@ class ConnectionRegistry
 
         unset($this->pendingRequests[$reqId]);
 
-        return $this->panels[$origin['panel']] ?? null;
+        // A resposta só volta para a conexão que perguntou. Um painel que
+        // assumiu o mesmo id depois não estava esperando por ela.
+        $panel = $this->panels[$origin['panel']] ?? null;
+
+        return $panel !== null && $panel->id === $origin['connection'] ? $panel : null;
     }
 
     public function dropExpiredRequests(): void
