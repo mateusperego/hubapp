@@ -10,9 +10,45 @@ class AgroProdutorController
 {
     public static function setJson(string $apelido, string $moduleName, string $campoChave = 'CLIFOR'): void
     {
-        $registros = RequestHelper::getJsonInput();
+        // Os três viram caminho em storage/json: só barra o que escaparia dele
+        // ou não seria um nome de arquivo, para não recusar cliente que já existe.
+        foreach ([$apelido, $moduleName, $campoChave] as $segmento) {
+            if (!JsonStorageService::nomeDeArquivoValido($segmento)) {
+                ResponseHelper::json(['SUCCESS' => false, 'erro' => 'apelido, módulo ou campo-chave inválido'], 400);
+                return;
+            }
+        }
 
-        $arquivosCriados = JsonStorageService::setJson($apelido, $moduleName, $registros, $campoChave);
+        // Corpo inválido virava lote vazio e respondia 200 "0": o cliente dava
+        // as coletas como enviadas sem que nada tivesse sido gravado.
+        $registros = RequestHelper::getJsonInputOrNull();
+        if ($registros === null && json_last_error() !== JSON_ERROR_NONE) {
+            ResponseHelper::json(['SUCCESS' => false, 'erro' => 'O corpo não é um JSON válido: ' . json_last_error_msg()], 400);
+            return;
+        }
+        if ($registros === null || ($registros !== [] && array_keys($registros) !== range(0, count($registros) - 1))) {
+            ResponseHelper::json(['SUCCESS' => false, 'erro' => 'O corpo deve ser um array JSON de registros'], 400);
+            return;
+        }
+
+        $invalidos = JsonStorageService::validarRegistros($registros, $campoChave);
+        if (!empty($invalidos)) {
+            ResponseHelper::json([
+                'SUCCESS' => false,
+                'erro' => 'Lote rejeitado: registros inválidos. Nada foi gravado.',
+                'itens' => array_slice($invalidos, 0, 50),
+                'total_invalidos' => count($invalidos),
+            ], 400);
+            return;
+        }
+
+        try {
+            $arquivosCriados = JsonStorageService::setJson($apelido, $moduleName, $registros, $campoChave);
+        } catch (\Throwable $e) {
+            error_log('[setjson] ' . $e->getMessage());
+            ResponseHelper::json(['SUCCESS' => false, 'erro' => $e->getMessage()], 500);
+            return;
+        }
 
         ResponseHelper::text((string) $arquivosCriados);
     }

@@ -18,37 +18,91 @@ class JsonStorageService
         }
     }
 
+    /**
+     * Nome que pode virar arquivo ou pasta tanto no Linux da produção quanto
+     * no Windows do WAMP: sem separador, sem caractere proibido no NTFS, sem
+     * nome reservado do Windows e sem começar com ponto (o que barra . e ..).
+     */
+    public static function nomeDeArquivoValido(string $nome): bool
+    {
+        return $nome !== ''
+            && strlen($nome) <= 200
+            && $nome[0] !== '.'
+            && !preg_match('/[\x00-\x1F<>:"\/\\\\|?*]/', $nome)
+            && !preg_match('/[. ]$/', $nome)
+            && !preg_match('/^(CON|PRN|AUX|NUL|COM\d|LPT\d)(\..*)?$/i', $nome);
+    }
+
+    /**
+     * Registros que o setJson descartaria em silêncio ou que quebrariam a
+     * gravação: o valor do campo-chave vira nome de arquivo.
+     *
+     * @return array<int, array{indice: int, erro: string}>
+     */
+    public static function validarRegistros(array $registros, string $campoChave): array
+    {
+        $invalidos = [];
+
+        foreach ($registros as $indice => $registro) {
+            if (!is_array($registro) || ($registro !== [] && array_keys($registro) === range(0, count($registro) - 1))) {
+                $invalidos[] = ['indice' => $indice, 'erro' => 'Registro não é um objeto'];
+                continue;
+            }
+
+            $chave = $registro[$campoChave] ?? null;
+            if (is_float($chave)) {
+                // json_decode vira float o número com decimal ou maior que um inteiro do PHP.
+                $invalidos[] = ['indice' => $indice, 'erro' => "{$campoChave} numérico com decimal ou grande demais: envie como texto"];
+                continue;
+            }
+            if (!is_int($chave) && !is_string($chave)) {
+                $invalidos[] = ['indice' => $indice, 'erro' => "{$campoChave} ausente ou não é texto/número"];
+                continue;
+            }
+
+            if (!self::nomeDeArquivoValido((string) $chave)) {
+                $invalidos[] = ['indice' => $indice, 'erro' => "{$campoChave} inválido para nome de arquivo: " . $chave];
+            }
+        }
+
+        return $invalidos;
+    }
+
+    /**
+     * Grava um arquivo por valor do campo-chave, substituindo o anterior.
+     * Lança exceção se alguma gravação falhar: o cliente só pode dar o lote
+     * como enviado quando tudo foi gravado.
+     */
     public static function setJson(string $apelido, string $moduleName, array $registros, string $campoChave): int
     {
         $basePath = self::getBasePath($apelido, $moduleName);
-        self::ensureDirectoryExists($basePath);
+        if (!is_dir($basePath) && !@mkdir($basePath, 0777, true) && !is_dir($basePath)) {
+            throw new \RuntimeException("Não foi possível criar a pasta de {$apelido}/{$moduleName}");
+        }
 
         $gruposPorChave = [];
         foreach ($registros as $registro) {
-            if (isset($registro[$campoChave])) {
-                $chave = $registro[$campoChave];
-                if (!isset($gruposPorChave[$chave])) {
-                    $gruposPorChave[$chave] = [];
-                }
-                $gruposPorChave[$chave][] = $registro;
-            }
+            $gruposPorChave[(string) $registro[$campoChave]][] = $registro;
         }
 
-        $arquivosCriados = 0;
         foreach ($gruposPorChave as $chave => $dados) {
-            $filePath = $basePath . $chave . '.json';
-
-            if (file_exists($filePath)) {
-                unlink($filePath);
+            $json = json_encode($dados);
+            if ($json === false) {
+                throw new \RuntimeException("Falha ao serializar {$chave}.json: " . json_last_error_msg());
             }
 
-            $result = file_put_contents($filePath, json_encode($dados));
-            if ($result !== false) {
-                $arquivosCriados++;
+            // Grava ao lado e troca de uma vez: uma falha no meio não apaga o
+            // arquivo anterior, como fazia o unlink antes da escrita.
+            $filePath = $basePath . $chave . '.json';
+            $tmp = $filePath . '.' . bin2hex(random_bytes(4)) . '.tmp';
+
+            if (@file_put_contents($tmp, $json) !== strlen($json) || !@rename($tmp, $filePath)) {
+                @unlink($tmp);
+                throw new \RuntimeException("Falha ao gravar {$chave}.json");
             }
         }
 
-        return $arquivosCriados;
+        return count($gruposPorChave);
     }
 
     public static function getJson(string $apelido, string $moduleName, string $jsonName = ''): array

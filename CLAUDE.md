@@ -91,7 +91,7 @@ copiar o arquivo para `storage/logos/`, sem precisar de versão nova do app:
   entra porque o gerador de PDF do app não lê.
 - A rota é aberta (como `/public/images`) e responde com `ETag`; o app manda
   `If-None-Match` e recebe 304 quando nada mudou. 404 faz o app apagar a cópia local e
-  voltar para a logo embutida ou o ícone.
+  voltar para o ícone (o app não embute mais logo de empresa).
 
 ### Namespace
 - All classes use the `HubApp\` namespace (PSR-4 autoloading via Composer)
