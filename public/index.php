@@ -6,7 +6,7 @@
  * Registrado antes do bootstrap para cobrir também as falhas dele. A reserva é
  * liberada no shutdown para sobrar memória quando o fatal for justamente ela.
  */
-$fatalReserve = str_repeat(' ', 256 * 1024);
+$fatalReserve = str_repeat(' ', 32 * 1024);
 
 register_shutdown_function(function () use (&$fatalReserve) {
     $fatalReserve = null;
@@ -17,14 +17,15 @@ register_shutdown_function(function () use (&$fatalReserve) {
     }
 
     $raiz = dirname(__DIR__);
-    $mensagem = str_replace($raiz, '', $erro['message']);
+    $mensagem = str_replace([$raiz, realpath($raiz) ?: $raiz], '', $erro['message']);
+    $respostaIniciada = headers_sent();
 
     $logDir = $raiz . '/storage/logs';
     if (!is_dir($logDir)) {
         @mkdir($logDir, 0777, true);
     }
     @file_put_contents($logDir . '/fatal_' . date('Y-m-d') . '.log', sprintf(
-        "[%s] %s %s | %s em %s:%d | corpo %d bytes, pico de memória %d bytes, %.1fs\n",
+        "[%s] %s %s | %s em %s:%d | corpo %d bytes, pico de memória %d bytes, %.1fs%s\n",
         date('Y-m-d H:i:s'),
         $_SERVER['REQUEST_METHOD'] ?? '-',
         $_SERVER['REQUEST_URI'] ?? '-',
@@ -33,14 +34,24 @@ register_shutdown_function(function () use (&$fatalReserve) {
         $erro['line'],
         (int) ($_SERVER['CONTENT_LENGTH'] ?? 0),
         memory_get_peak_usage(true),
-        microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true))
+        microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true)),
+        $respostaIniciada ? ' | resposta já tinha começado a sair' : ''
     ), FILE_APPEND);
 
-    if (!headers_sent()) {
-        http_response_code(500);
-        header('Content-Type: application/json; charset=UTF-8');
+    // Com status e parte do corpo já enviados não há como virar 500: anexar o
+    // JSON só corromperia o que o cliente recebe. Fica só o log.
+    if ($respostaIniciada) {
+        return;
     }
-    echo json_encode(['SUCCESS' => false, 'erro' => $mensagem]);
+
+    // A rota é aberta: o stack trace (com os argumentos das chamadas) fica só
+    // no log. Mensagem com bytes fora do UTF-8 não pode zerar o corpo de novo.
+    http_response_code(500);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(
+        ['SUCCESS' => false, 'erro' => explode("\nStack trace:", $mensagem, 2)[0]],
+        JSON_INVALID_UTF8_SUBSTITUTE
+    );
 });
 
 require __DIR__ . '/../src/bootstrap.php';
