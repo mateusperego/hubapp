@@ -8,6 +8,41 @@ use HubApp\Helpers\ResponseHelper;
 
 class AgroProdutorController
 {
+    /**
+     * Um lote de coletas de 17 MB (95 mil registros) estourava os 128 MB
+     * padrão: o json_decode ocupa de 6 a 8 vezes o tamanho do corpo. Vale só
+     * para esta rota; o cliente também divide os lotes por CLIFOR.
+     */
+    private const MEMORIA_SETJSON = 512 * 1024 * 1024;
+
+    /**
+     * Sobe o memory_limit até $bytes, sem nunca reduzir um limite maior (ou
+     * ilimitado) já configurado no servidor.
+     */
+    private static function garantirMemoria(int $bytes): void
+    {
+        $atual = trim((string) ini_get('memory_limit'));
+        if ($atual === '-1') {
+            return;
+        }
+
+        $valor = (int) $atual;
+        switch (strtoupper(substr($atual, -1))) {
+            case 'G':
+                $valor *= 1024;
+                // no break
+            case 'M':
+                $valor *= 1024;
+                // no break
+            case 'K':
+                $valor *= 1024;
+        }
+
+        if ($valor < $bytes) {
+            ini_set('memory_limit', (string) $bytes);
+        }
+    }
+
     public static function setJson(string $apelido, string $moduleName, string $campoChave = 'CLIFOR'): void
     {
         // Os três viram caminho em storage/json: só barra o que escaparia dele
@@ -18,6 +53,8 @@ class AgroProdutorController
                 return;
             }
         }
+
+        self::garantirMemoria(self::MEMORIA_SETJSON);
 
         // Corpo inválido virava lote vazio e respondia 200 "0": o cliente dava
         // as coletas como enviadas sem que nada tivesse sido gravado.
