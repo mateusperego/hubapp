@@ -1,5 +1,48 @@
 <?php
 
+/*
+ * Fatal do PHP (memória, tempo de execução, autoload, .env inválido) saía como
+ * 500 de corpo vazio e sem nada em storage/logs — o cliente só via o status.
+ * Registrado antes do bootstrap para cobrir também as falhas dele. A reserva é
+ * liberada no shutdown para sobrar memória quando o fatal for justamente ela.
+ */
+$fatalReserve = str_repeat(' ', 256 * 1024);
+
+register_shutdown_function(function () use (&$fatalReserve) {
+    $fatalReserve = null;
+
+    $erro = error_get_last();
+    if ($erro === null || !in_array($erro['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        return;
+    }
+
+    $raiz = dirname(__DIR__);
+    $mensagem = str_replace($raiz, '', $erro['message']);
+
+    $logDir = $raiz . '/storage/logs';
+    if (!is_dir($logDir)) {
+        @mkdir($logDir, 0777, true);
+    }
+    @file_put_contents($logDir . '/fatal_' . date('Y-m-d') . '.log', sprintf(
+        "[%s] %s %s | %s em %s:%d | corpo %d bytes, pico de memória %d bytes, %.1fs\n",
+        date('Y-m-d H:i:s'),
+        $_SERVER['REQUEST_METHOD'] ?? '-',
+        $_SERVER['REQUEST_URI'] ?? '-',
+        $mensagem,
+        str_replace($raiz, '', $erro['file']),
+        $erro['line'],
+        (int) ($_SERVER['CONTENT_LENGTH'] ?? 0),
+        memory_get_peak_usage(true),
+        microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true))
+    ), FILE_APPEND);
+
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode(['SUCCESS' => false, 'erro' => $mensagem]);
+});
+
 require __DIR__ . '/../src/bootstrap.php';
 
 use HubApp\Controllers\DanfeController;
