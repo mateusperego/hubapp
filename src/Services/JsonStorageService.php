@@ -18,6 +18,37 @@ class JsonStorageService
         }
     }
 
+    /**
+     * Registros que o setJson descartaria em silêncio ou que quebrariam a
+     * gravação: o valor do campo-chave vira nome de arquivo.
+     *
+     * @return array<int, array{indice: int, erro: string}>
+     */
+    public static function validarRegistros(array $registros, string $campoChave): array
+    {
+        $invalidos = [];
+
+        foreach ($registros as $indice => $registro) {
+            if (!is_array($registro) || ($registro !== [] && array_keys($registro) === range(0, count($registro) - 1))) {
+                $invalidos[] = ['indice' => $indice, 'erro' => 'Registro não é um objeto'];
+                continue;
+            }
+
+            $chave = $registro[$campoChave] ?? null;
+            if (!is_int($chave) && !is_string($chave)) {
+                $invalidos[] = ['indice' => $indice, 'erro' => "{$campoChave} ausente ou não é texto/número"];
+                continue;
+            }
+
+            $chave = (string) $chave;
+            if ($chave === '' || $chave[0] === '.' || strpbrk($chave, "/\\\0") !== false) {
+                $invalidos[] = ['indice' => $indice, 'erro' => "{$campoChave} inválido para nome de arquivo: " . json_encode($chave)];
+            }
+        }
+
+        return $invalidos;
+    }
+
     public static function setJson(string $apelido, string $moduleName, array $registros, string $campoChave): int
     {
         $basePath = self::getBasePath($apelido, $moduleName);
